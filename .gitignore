@@ -1,0 +1,57 @@
+# Compiled object files
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dll
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+a.out
+
+# C++ backup files
+*~
+
+# Build directories
+/build/
+/bin/
+/lib/
+/CMakeFiles/
+/CMakeCache.txt
+Makefile
+cmake_install.cmake
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Misc
+*.log
+*.swp
+.DS_Store
+.idea/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.userprefs
+*.ipch
+*.db
+*.VC.db
+*.VC.VC.opendb
+*.clang-format
