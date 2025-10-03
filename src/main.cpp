@@ -1,20 +1,12 @@
 
 #include <iostream>
 
-/* --- Included in Graph.hpp ---
-#include <filesystem>
-#include <fstream>
-#include <memory>
-#include <vector>
-*/
-
-/* --- Included in util.hpp ---
 #include <filesystem>
 #include <string>
 #include <vector>
-*/
 
 #include "Graph.hpp"
+#include "simulateAnnealing.hpp"
 #include "util.hpp"
 
 // Fallback in case PROJECT_ROOT is not defined. This allows input files to be found at the project
@@ -28,16 +20,49 @@
 #define DATA_DIR "./data"
 #endif
 
+#include <iostream>
+/**
+ * @brief Scratch space for any dumb test I want to run. It'll keep the main file cleaner.
+ * @param graph The graph to perform tests on.
+ * @param flags A vector of strings representing various flags that determine what additional
+ * features to use.
+ */
+void runTests(Graph& graph, const std::vector<std::string>& flags)
+{
+    auto swapFunc = [](Graph& g, int v1, int v2) {
+        std::vector<util::Position>& positions = g.getVertexPositionsRef();
+        std::swap(positions[v1], positions[v2]);
+    };
+
+    if (!graph.initializeVertexPositions()) {
+        std::cerr << "Error: Failed to initialize vertex positions." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    std::cout << "Initial Graph State:" << std::endl;
+    std::cout << "Score: " << graph.scoreGraphLayout() << std::endl;
+    std::cout << "Vertex Positions:" << std::endl;
+    for (int vertex = 0; vertex < graph.getNumVertices(); vertex++) {
+        util::Position pos = graph.getVertexPosition(vertex);
+        std::cout << "Node " << vertex << " at (" << pos.row << ", " << pos.col << ")" << std::endl;
+    }
+
+    for (int vertex = 0; vertex < graph.getNumVertices() - 1; vertex++) {
+        swapFunc(graph, vertex, vertex + 1);
+        std::cout << "After swapping vertices " << vertex << " and " << vertex + 1 << ":"
+                  << std::endl;
+        std::cout << "Score: " << graph.scoreGraphLayout() << std::endl;
+        for (int v = 0; v < graph.getNumVertices(); v++) {
+            util::Position pos = graph.getVertexPosition(v);
+            std::cout << "Node " << v << " at (" << pos.row << ", " << pos.col << ")" << std::endl;
+        }
+    }
+}
+
 int main(int argc, char* argv[])
 {
     // Parse command line arguments
     util::Args args = util::parseCommandLineArgs(argc, argv);
-
-    std::cout << "Found flags: ";
-    for (const auto& flag : args.flags) {
-        std::cout << flag << " ";
-    }
-    std::cout << std::endl;
 
     std::filesystem::path inputFilePath = util::getInputFileLocation(
         args.positional[0], std::string(PROJECT_ROOT), std::string(DATA_DIR));
@@ -64,6 +89,13 @@ int main(int argc, char* argv[])
 
     Graph graph(inputFilePath, outputFilePath);
     graph.readInputFile();
+
+    simulateAnnealing(graph, args.flags);
+
+    if (!graph.reportResults(args.flags)) {
+        std::cerr << "Error: Failed to report results." << std::endl;
+        return 1;
+    }
 
     return 0;
 }

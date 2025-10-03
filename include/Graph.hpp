@@ -7,6 +7,8 @@
 #include <memory>
 #include <vector>
 
+#include "util.hpp"
+
 /**
  * @brief A simple Graph class to carry out graph-related operations. It's built more as an
  * interface for the graph rather than actually implementing the annealing algorithm here.
@@ -21,6 +23,55 @@ public:
      * @brief Reads the input file specified by inputFilePath and processes its contents.
      */
     void readInputFile();
+
+    /**
+     * @brief Initializes vertex positions. If no positions are provided, vertices are placed in
+     * order on a grid of size gridWidth x gridHeight.
+     * @param positions Optional vector of positions to initialize the vertices. Repeated positions
+     * are not allowed.
+     * @return true if initialization is successful, false otherwise.
+     */
+    bool initializeVertexPositions(const std::vector<util::Position>& positions = {});
+
+    /**
+     * @brief Retrieves the neighbors of a given vertex.
+     * @param vertex The vertex for which to retrieve neighbors.
+     * @return A vector of neighboring vertices.
+     */
+    std::vector<int> getVertexNeighbors(int vertex) const;
+
+    /**
+     * @brief Retrieves the position of a given vertex.
+     * @param vertex The vertex for which to retrieve the position.
+     * @return The position of the vertex.
+     */
+    util::Position getVertexPosition(int vertex) const;
+
+    /**
+     * @brief Scores the current layout of the graph based on the sum of squared
+     * distances between connected vertices.
+     * @return The score of the current graph layout.
+     */
+    int scoreGraphLayout() const;
+
+    /**
+     * @brief Reports the results of the graph layout based on input flags
+     * @param flags A vector of strings representing various flags that determine what additional
+     * information to include in the report.
+     * @return bool indicating success or failure of the report operation.
+     */
+    bool reportResults(const std::vector<std::string>& flags) const;
+
+    /* Getters for various member variables */
+    util::GridDimensions getGridDimensions() const { return this->gridDimensions; }
+    int getGridWidth() const { return this->gridDimensions.width; }
+    int getGridHeight() const { return this->gridDimensions.height; }
+    int getNumVertices() const { return this->numVertices; }
+    std::vector<int> getOffsets() const { return this->offsets; }
+    std::vector<int> getNeighbors() const { return this->neighbors; }
+    std::vector<util::Position> getConstVertexPositions() const { return this->vertexPositions; }
+    std::vector<util::Position> getCopyVertexPositions() const { return this->vertexPositions; }
+    std::vector<util::Position>& getVertexPositionsRef() { return this->vertexPositions; }
 
 private:
     /**
@@ -56,8 +107,7 @@ private:
     std::filesystem::path inputFilePath;
     std::filesystem::path outputFilePath;
 
-    int gridWidth;
-    int gridHeight;
+    util::GridDimensions gridDimensions;
     int numVertices;
 
     /**
@@ -85,6 +135,7 @@ private:
      */
     std::vector<int> offsets;
     std::vector<int> neighbors;
+    std::vector<util::Position> vertexPositions;
 };
 
 #endif // GRAPH_HPP

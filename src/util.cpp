@@ -1,12 +1,9 @@
 
-#include <iostream>
-
-/* --- Included in util.hpp ---
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
-*/
 
 #include "util.hpp"
 
@@ -30,7 +27,7 @@ util::Args util::parseCommandLineArgs(int argc, char* argv[])
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg.rfind("--", 0) == 0) { // Argument starts with '--', it's a flag.
-            if (i > 2) {
+            if (i > 3) {
                 args.flags.push_back(arg);
             } else {
                 std::cerr
@@ -39,7 +36,9 @@ util::Args util::parseCommandLineArgs(int argc, char* argv[])
                 printUsageAndExit();
             }
         } else { // Positional argument
-            if (args.positional.size() >= 2 || i > 2) {
+            if (args.positional.size() > 2 || i > 3) {
+                std::cerr << args.positional.size() << std::endl;
+                std::cerr << i << std::endl;
                 std::cerr << "Error: Only args 1 and 2 may be positional." << std::endl;
                 printUsageAndExit();
             }

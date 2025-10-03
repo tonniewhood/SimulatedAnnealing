@@ -13,6 +13,35 @@ struct Args {
     std::vector<std::string> positional;
 };
 
+struct GridDimensions {
+    int width;
+    int height;
+
+    GridDimensions(int width = -1, int height = -1)
+        : width(width)
+        , height(height)
+    {
+    }
+};
+
+struct Position {
+    int row;
+    int col;
+
+    Position(int row = -1, int col = -1)
+        : row(row)
+        , col(col)
+    {
+    }
+
+    bool operator==(const Position& other) const { return row == other.row && col == other.col; }
+
+    int distanceTo(const Position& other) const
+    {
+        return std::abs(row - other.row) + std::abs(col - other.col);
+    }
+};
+
 /**
  * @brief Parses command-line arguments into flags and positional arguments. If improper arguments
  * are passed, the program will exit.
@@ -42,6 +71,7 @@ std::filesystem::path getInputFileLocation(
  */
 std::filesystem::path createOutputFilePath(
     const std::filesystem::path& inputFilePath, const std::string& outputFileName);
+
 };
 
 #endif // UTIL_HPP

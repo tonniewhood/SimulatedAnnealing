@@ -1,14 +1,11 @@
 
-#include <fstream>
-#include <iostream>
-#include <sstream>
-
-/* --- Included in Graph.hpp ---
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <memory>
+#include <sstream>
+#include <unordered_map>
 #include <vector>
---------------------------------*/
 
 #include "Graph.hpp"
 
@@ -17,6 +14,12 @@ Graph::Graph(
     const std::filesystem::path& inputFilePath, const std::filesystem::path& outputFilePath)
     : inputFilePath(inputFilePath)
     , outputFilePath(outputFilePath)
+    , gridDimensions(-1, -1)
+    , numVertices(-1)
+    , offsets(std::vector<int>())
+    , neighbors(std::vector<int>())
+    , vertexPositions(std::vector<util::Position>())
+
 {
 }
 
@@ -48,18 +51,174 @@ void Graph::readInputFile()
             this->neighbors.push_back(neighbor);
         }
     }
+}
 
-    // Print out the graph
-    printf("Offsets:   ");
-    for (auto& offset : this->offsets) {
-        printf("%2d ", offset);
+/**
+ * @brief Initializes vertex positions. If no positions are provided, vertices are placed in
+ * order on a grid of size gridWidth x gridHeight.
+ * @param positions Optional vector of positions to initialize the vertices. Repeated positions
+ * are not allowed.
+ * @return true if initialization is successful, false otherwise.
+ */
+bool Graph::initializeVertexPositions(const std::vector<util::Position>& positions)
+{
+    if (!positions.empty()) {
+        // If positions are provided, validate them
+        if (static_cast<int>(positions.size()) != this->numVertices) {
+            std::cerr << "Error: Number of provided positions (" << positions.size()
+                      << ") does not match number of vertices (" << this->numVertices << ")."
+                      << std::endl;
+            return false;
+        }
+
+        // Check for duplicate positions
+        std::unordered_map<std::string, bool> positionMap;
+        for (const auto& pos : positions) {
+            if (pos.col < 0 || pos.col >= this->gridDimensions.width || pos.row < 0
+                || pos.row >= this->gridDimensions.height) {
+                std::cerr << "Error: Position (" << pos.col << ", " << pos.row
+                          << ") is out of grid bounds." << std::endl;
+                return false;
+            }
+
+            std::string key = std::to_string(pos.row) + "," + std::to_string(pos.col);
+            if (positionMap.find(key) != positionMap.end()) {
+                std::cerr << "Error: Duplicate position found: (" << pos.row << ", " << pos.col
+                          << ")." << std::endl;
+                return false;
+            }
+            positionMap[key] = true;
+        }
+
+        this->vertexPositions = positions;
+    } else {
+        // If no positions are provided, place vertices in order on the grid
+        this->vertexPositions.clear();
+        for (int i = 0; i < this->numVertices; ++i) {
+            int col = i % this->gridDimensions.width;
+            int row = i / this->gridDimensions.width;
+            if (row >= this->gridDimensions.height) {
+                std::cerr << "Error: Not enough space on the grid to place all vertices."
+                          << std::endl;
+                return false;
+            }
+            this->vertexPositions.emplace_back(row, col);
+        }
     }
 
-    printf("\nNeighbors: ");
-    for (auto& neighbor : this->neighbors) {
-        printf("%2d ", neighbor);
+    return true;
+}
+
+/**
+ * @brief Retrieves the neighbors of a given vertex.
+ * @param vertex The vertex for which to retrieve neighbors.
+ * @return A vector of neighboring vertices.
+ */
+std::vector<int> Graph::getVertexNeighbors(int vertex) const
+{
+    if (vertex < 0 || vertex >= this->numVertices) {
+        std::cerr << "Error: Vertex index out of bounds." << std::endl;
+        return {}; // Return an empty vector
     }
-    printf("\n");
+
+    int start = this->offsets[vertex];
+    int end = this->offsets[vertex + 1];
+
+    return std::vector<int>(this->neighbors.begin() + start, this->neighbors.begin() + end);
+}
+
+/**
+ * @brief Retrieves the position of a given vertex.
+ * @param vertex The vertex for which to retrieve the position.
+ * @return The position of the vertex.
+ */
+util::Position Graph::getVertexPosition(int vertex) const
+{
+    if (vertex < 0 || vertex >= this->numVertices) {
+        std::cerr << "Error: Vertex index out of bounds." << std::endl;
+        return util::Position(-1, -1); // Return an invalid position
+    }
+
+    if (this->vertexPositions.empty()) {
+        std::cerr << "Error: Vertex positions have not been initialized." << std::endl;
+        return util::Position(-1, -1); // Return an invalid position
+    }
+
+    if (vertex >= static_cast<int>(this->vertexPositions.size())) {
+        std::cerr << "Error: Vertex index exceeds initialized positions." << std::endl;
+        return util::Position(-1, -1); // Return an invalid position
+    }
+
+    return this->vertexPositions[vertex];
+}
+
+/**
+ * @brief Scores the current layout of the graph based on the sum of squared
+ * distances between connected vertices.
+ * @return The score of the current graph layout.
+ */
+int Graph::scoreGraphLayout() const
+{
+    int score = 0;
+    for (int vertex = 0; vertex < this->getNumVertices(); vertex++) {
+
+        // Start by grabbing all the neighbors of this vertex and its position
+        std::vector<int> neighbors = this->getVertexNeighbors(vertex);
+        util::Position vertexPos = this->getVertexPosition(vertex);
+        // Now, for each neighbor, calculate the squared distance and add it to the score
+        for (int neighbor : neighbors) {
+
+            util::Position neighborPos = this->getVertexPosition(neighbor);
+            int distance = vertexPos.distanceTo(neighborPos);
+            score += distance * distance; // Square the distance
+        }
+    }
+    return score;
+}
+
+/**
+ * @brief Reports the results of the graph layout based on input flags
+ * @param flags A vector of strings representing various flags that determine what additional
+ * information to include in the report.
+ * @return bool indicating success or failure of the report operation.
+ */
+bool Graph::reportResults(const std::vector<std::string>& flags) const
+{
+    std::ofstream outputFile(this->outputFilePath);
+    if (!outputFile.is_open()) {
+        std::cerr << "Error: Could not open output file: " << this->outputFilePath << std::endl;
+        return false;
+    }
+
+    // Write the grid dimensions and number of vertices
+    outputFile << "For grid dimensions " << this->gridDimensions.width << " x "
+               << this->gridDimensions.height << " with " << this->numVertices
+               << " vertices:" << std::endl;
+    outputFile << "Graph layout:" << std::endl;
+    outputFile << "Final score: " << this->scoreGraphLayout() << std::endl;
+    outputFile << "[positions in (row, col) format]" << std::endl;
+    outputFile << "===========================" << std::endl;
+    // List the positions of each vertex
+    for (int vertex = 0; vertex < this->numVertices; ++vertex) {
+        util::Position pos = this->getVertexPosition(vertex);
+        outputFile << "Node " << vertex << " placed at (" << pos.row << ", " << pos.col << ")"
+                   << std::endl;
+    }
+    // List the edges of the graph and their distances
+    outputFile << "---------------------------" << std::endl;
+    for (int vertex = 0; vertex < this->numVertices; ++vertex) {
+        std::vector<int> neighbors = this->getVertexNeighbors(vertex);
+        util::Position vertexPos = this->getVertexPosition(vertex);
+        for (int neighbor : neighbors) {
+            util::Position neighborPos = this->getVertexPosition(neighbor);
+            int distance = vertexPos.distanceTo(neighborPos);
+            outputFile << "Edge (" << vertex << " -> " << neighbor << ") with distance " << distance
+                       << std::endl;
+        }
+    }
+    std::cout << "Wrote Results to '" << this->outputFilePath << "'" << std::endl;
+    outputFile.close();
+    return true;
 }
 
 /**
@@ -92,8 +251,7 @@ void Graph::validateHeaderInfo(
         std::cerr << "Error: Grid dimensions must be positive integers." << std::endl;
         exit(EXIT_FAILURE);
     }
-    this->gridWidth = value1;
-    this->gridHeight = value2;
+    this->gridDimensions = util::GridDimensions(value1, value2);
 
     // Next line should be the number of vertices
     do {
@@ -210,8 +368,6 @@ std::vector<std::vector<int>> Graph::getGraphEdges()
     // Get the necessary variables ready to parse the file
     std::string line;
     std::stringstream lineStream;
-    char lineType = '\0';
-    int value1 = 0, value2 = 0;
 
     this->validateHeaderInfo(inputFile, line, lineStream);
 
