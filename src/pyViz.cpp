@@ -70,7 +70,10 @@ private:
     int gridCols = 0;
     int numVertices = 0;
     bool initialized = false;
-    bool isRunningFlag = false;
+    bool isActiveFlag = false;
+    int numWindowsActive = 0; // Don't need to keep it above 0, and the check to quit happens inside
+                              // of a callback which will only be called after the caller is
+                              // created, which will increment the count above 0
 
     std::vector<int> offsets = {};
     std::vector<int> neighbors = {};
@@ -87,10 +90,12 @@ public:
         const std::vector<int>& neighbors);
     void displayGraph();
     void updateGrid(const std::vector<util::Position>& positions, int iteration, double score);
-    bool isRunning() const { return this->isRunningFlag; }
+    void onWindowCloseCallback();
+    bool isActive() const { return this->isActiveFlag; }
     void shutdown();
 
 private:
+    PyObject* createOnCloseCallback();
     void visualizationLoop();
     bool initializePython();
     void cleanupPython();
@@ -98,8 +103,16 @@ private:
     void processGridUpdate(const VizUpdate& update);
 };
 
-// Global instance
+// Global instances
 static PyVisualizer g_visualizer;
+static PyObject* cStyleCallbackWrapper(PyObject* self, PyObject* /* args */)
+{
+    auto* that = reinterpret_cast<PyVisualizer*>(PyCapsule_GetPointer(self, nullptr));
+    if (that) {
+        that->onWindowCloseCallback();
+    }
+    Py_RETURN_NONE;
+}
 
 bool PyVisualizer::initialize(int rows, int cols, int numVertices, const std::vector<int>& offsets,
     const std::vector<int>& neighbors)
@@ -188,7 +201,7 @@ bool PyVisualizer::initializePython()
         return false;
     }
 
-    this->isRunningFlag = true;
+    this->isActiveFlag = true;
 
     // Release GIL
     PyGILState_Release(gstate);
@@ -233,7 +246,7 @@ void PyVisualizer::visualizationLoop()
         }
     }
 
-    this->isRunningFlag = false;
+    this->isActiveFlag = false;
     cleanupPython();
 }
 
@@ -294,6 +307,9 @@ void PyVisualizer::processGraphDisplay(const VizUpdate& update)
             return;
         }
         Py_DECREF(pResult);
+
+        // Increment active window count
+        this->numWindowsActive++;
     }
 
     // Release GIL
@@ -309,12 +325,22 @@ void PyVisualizer::processGridUpdate(const VizUpdate& update)
 
     if (!pGridInstance) {
         // Create grid instance on first update
-        PyObject* pArgs = PyTuple_New(5);
+        PyObject* pArgs = PyTuple_New(6);
         PyTuple_SetItem(pArgs, 0, PyLong_FromLong(this->gridRows));
         PyTuple_SetItem(pArgs, 1, PyLong_FromLong(this->gridCols));
         PyTuple_SetItem(pArgs, 2, PyUnicode_FromString("C++ Annealing Visualization"));
         PyTuple_SetItem(pArgs, 3, PyBool_FromLong(1 /* use_color_map */));
         PyTuple_SetItem(pArgs, 4, PyLong_FromLong(this->numVertices));
+
+        PyObject* pCallback = createOnCloseCallback();
+        if (!pCallback) {
+            PyErr_Print();
+            PyGILState_Release(gstate);
+            Py_DECREF(pArgs);
+            std::cerr << "Failed to create on_close_callback" << std::endl;
+            return;
+        }
+        PyTuple_SetItem(pArgs, 5, pCallback);
 
         pGridInstance = PyObject_CallObject(pGridClass, pArgs);
         Py_DECREF(pArgs);
@@ -334,6 +360,9 @@ void PyVisualizer::processGridUpdate(const VizUpdate& update)
             return;
         }
         Py_DECREF(pResult);
+
+        // Increment active window count
+        this->numWindowsActive++;
     }
 
     // Prepare positions as a Python list of tuples
@@ -407,6 +436,47 @@ void PyVisualizer::updateGrid(
     queueCondition.notify_one();
 }
 
+void PyVisualizer::onWindowCloseCallback()
+{
+    // This could be called from Python via a callback when the window is closed
+    std::cout << "Visualization window closed by user" << std::endl;
+    std::cout << "Windows remaining: " << this->numWindowsActive - 1 << std::endl;
+
+    // If all windows are closed, we can signal shutdown
+    if (--this->numWindowsActive <= 0) {
+        this->shouldStop = true;
+        this->isActiveFlag = false;
+        queueCondition.notify_one();
+    }
+}
+
+PyObject* PyVisualizer::createOnCloseCallback()
+{
+    // Create a capsule to hold the callback function pointer
+    PyObject* capsule = PyCapsule_New(
+        (void*)(&PyVisualizer::onWindowCloseCallback), "on_close_callback", nullptr);
+
+    if (!capsule) {
+        std::cerr << "Failed to create on_close_callback capsule" << std::endl;
+        return nullptr;
+    }
+
+    PyMethodDef* methodDef = new PyMethodDef { "on_close_callback",
+        reinterpret_cast<PyCFunction>(cStyleCallbackWrapper), METH_NOARGS,
+        "Notify C++ that the window was closed" };
+
+    PyObject* func = PyCFunction_New(methodDef, nullptr);
+    if (!func) {
+        PyErr_Print();
+        std::cerr << "Failed to create on_close_callback function" << std::endl;
+        Py_DECREF(capsule);
+        return nullptr;
+    }
+
+    Py_DECREF(capsule);
+    return func;
+}
+
 void PyVisualizer::cleanupPython()
 {
     // Restore main thread state to cleanup Python objects
@@ -471,7 +541,7 @@ bool initializeVisualizer(int gridRows, int gridCols, int numVertices,
 
 void displayGraph() { g_visualizer.displayGraph(); }
 
-bool isRunning() { return g_visualizer.isRunning(); }
+bool isActive() { return g_visualizer.isActive(); }
 
 void updateVisualization(const std::vector<util::Position>& positions, int iteration, double score)
 {

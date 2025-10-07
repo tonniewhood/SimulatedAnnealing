@@ -20,7 +20,7 @@ def test_animated_grid():
     # First, show the live animation
     sequence = []
     current_pos = positions.copy()
-    grid = AnimatedGrid(NROWS, NCOLS, "Live Node Animation")
+    grid = AnimatedGrid(NROWS, NCOLS, "Live Node Animation", close_callback=lambda: print("\n\nYeet\n"))
     grid.live_update_mode()
     
     for i in range(NROWS * NCOLS):
@@ -30,6 +30,10 @@ def test_animated_grid():
         # Show current position live
         grid.update_positions(current_pos, iteration=i, score=i)
         time.sleep(0.1)
+
+        if not grid.is_active:
+            print("Window closed early by user. Stopping animation.")
+            break
         
         # Calculate next position, but don't wrap around at the end
         current_linear_pos = current_pos[0][0] * NCOLS + current_pos[0][1]
@@ -126,7 +130,7 @@ def test_graph():
     print("Graph window closed!")
 
 if __name__ == "__main__":
-    # test_animated_grid()
+    test_animated_grid()
     # test_color_map()
-    test_graph()
+    # test_graph()
     # print("Working in it!")

@@ -301,12 +301,12 @@ void simulateAnnealing(Graph& graph, const std::unordered_map<std::string, std::
     // At the end, make sure we have the best positions found during the entire process
     graph.getVertexPositionsRef() = lastBestPositions;
 
-    // if (plotType & util::GRID_MASK) {
-    //     viz::updateVisualization(graph.getConstVertexPositions(), iteration, lastUsedDistance);
-    //     while (viz::isRunning()) {
-    //         std::this_thread::sleep_for(100ms);
-    //     }
-    // }
+    if (plotType & util::GRID_MASK) {
+        viz::updateVisualization(graph.getConstVertexPositions(), iteration, lastUsedDistance);
+        while (viz::isActive()) {
+            std::this_thread::sleep_for(100ms);
+        }
+    }
 
     std::cout << "Completed Simulated Annealing" << std::endl;
     std::cout << "Run " << iteration << " iterations." << std::endl;

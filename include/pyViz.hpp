@@ -37,10 +37,10 @@ void displayGraph();
 void updateVisualization(const std::vector<util::Position>& positions, int iteration, double score);
 
 /**
- * @brief Check if the visualization system is still running
- * @return true if running, false if shutdown
+ * @brief Check if the visualization windows are still active
+ * @return true if active, false if shutdown
  */
-bool isRunning();
+bool isActive();
 
 /**
  * @brief Shutdown the visualization system and cleanup threads

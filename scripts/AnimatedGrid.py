@@ -7,7 +7,7 @@ class AnimatedGrid:
     Animated grid visualization for simulated annealing progress.
     """
 
-    def __init__(self, NROWS, NCOLS, title="Simulated Annealing Progress", use_color_map=False, num_nodes=1):
+    def __init__(self, NROWS, NCOLS, title="Simulated Annealing Progress", use_color_map=False, num_nodes=1, close_callback=None):
         self.NROWS = NROWS
         self.NCOLS = NCOLS
         self.fig, self.ax = plt.subplots(figsize=(10, 8))
@@ -35,8 +35,14 @@ class AnimatedGrid:
         self.animation_obj = None
         
         # Callback for when window is closed
-        self.close_callback = None
-        
+        self.close_callback = close_callback
+        self.is_active = True
+        if close_callback:
+            self.set_close_callback(close_callback)
+
+        # I'm untrusting right now
+        self._on_close(None)
+
     def setup_plot(self):
         """Initialize the plot with grid background."""
         # Remove axes, ticks, and labels
@@ -120,9 +126,10 @@ class AnimatedGrid:
         self.close_callback = callback
         self.fig.canvas.mpl_connect('close_event', self._on_close)
     
-    def _on_close(self, event):
+    def _on_close(self, _):
         """Internal method called when window is closed."""
         self.is_running = False
+        self.is_active = False
         if self.close_callback:
             self.close_callback()
     
