@@ -8,6 +8,41 @@
 #include "util.hpp"
 
 /**
+ * @brief Breaks up a flag into the flag name and its value if it has one.
+ * @param flag The flag string to be parsed.
+ * @return A pair where the first element is the flag name and the second is the flag value (or an
+ * empty string if no value is present).
+ */
+std::pair<std::string, std::string> parseFlag(const std::string& flag)
+{
+    std::string flagName = flag;
+    std::string flagValue;
+
+    // Check if the flag has an associated value
+    size_t equalsPos = flag.find('=');
+    if (equalsPos != std::string::npos) {
+        flagName = flag.substr(0, equalsPos);
+        flagValue = flag.substr(equalsPos + 1);
+    }
+
+    return { flagName, flagValue };
+}
+
+/**
+ * @brief Converts a string to lowercase.
+ * @param str The input string.
+ * @return A new string with all characters in lowercase.
+ */
+std::string util::toLower(const std::string& str)
+{
+    std::string lowerStr = str;
+    for (char& c : lowerStr) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return lowerStr;
+}
+
+/**
  * @brief Parses command-line arguments into flags and positional arguments. If improper arguments
  * are passed, the program will exit.
  * @param argc The argument count.
@@ -27,8 +62,8 @@ util::Args util::parseCommandLineArgs(int argc, char* argv[])
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if (arg.rfind("--", 0) == 0) { // Argument starts with '--', it's a flag.
-            if (i > 3) {
-                args.flags.push_back(arg);
+            if (i > 2) {
+                args.flagMap.insert(parseFlag(arg));
             } else {
                 std::cerr
                     << "Error: Flags must be provided after the first three positional arguments."

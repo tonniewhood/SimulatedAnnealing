@@ -1,8 +1,10 @@
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -18,8 +20,11 @@ Graph::Graph(
     , numVertices(-1)
     , offsets(std::vector<int>())
     , neighbors(std::vector<int>())
+    , reverseOffsets(std::vector<int>())
+    , reverseNeighbors(std::vector<int>())
+    , degreeQueue(std::priority_queue<int>())
     , vertexPositions(std::vector<util::Position>())
-
+    , paddedPositions(std::vector<util::Position>())
 {
 }
 
@@ -33,23 +38,38 @@ Graph::~Graph()
  */
 void Graph::readInputFile()
 {
-    auto edges = this->getGraphEdges();
+    auto [forwardEdges, reverseEdges] = this->getGraphEdges();
 
     // Reserve the offsets and neighbors vectors based on the number of vertices
     this->offsets.resize(
         this->numVertices + 1, 0); // +1 allows for the end point of the last vertex
-    this->neighbors.reserve(edges.size()); // Reserve space for each edge
+    this->neighbors.reserve(forwardEdges.size()); // Reserve space for each edge
+    this->reverseOffsets.resize(this->numVertices + 1, 0);
+    this->reverseNeighbors.reserve(reverseEdges.size());
 
     // I think there's got to be a better way to unroll this edge vector, but for now we'll do it
     // naively
     for (int vertex = 0; vertex < this->numVertices; ++vertex) {
         // Set the offset for this vertex to the current size of the neighbors vector
-        this->offsets[vertex + 1] = static_cast<int>(edges[vertex].size() + this->offsets[vertex]);
+        this->offsets[vertex + 1]
+            = static_cast<int>(forwardEdges[vertex].size() + this->offsets[vertex]);
+        this->reverseOffsets[vertex + 1]
+            = static_cast<int>(reverseEdges[vertex].size() + this->reverseOffsets[vertex]);
 
         // Add all neighbors of this vertex to the neighbors vector
-        for (int neighbor : edges[vertex]) {
+        for (int neighbor : forwardEdges[vertex]) {
             this->neighbors.push_back(neighbor);
         }
+
+        for (int neighbor : reverseEdges[vertex]) {
+            this->reverseNeighbors.push_back(neighbor);
+        }
+    }
+
+    // Final validation to ensure the sizes match
+    if (static_cast<int>(this->neighbors.size()) != this->offsets.back()) {
+        std::cerr << "Error: Mismatch in neighbors size and offsets last value." << std::endl;
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -91,9 +111,14 @@ bool Graph::initializeVertexPositions(const std::vector<util::Position>& positio
         }
 
         this->vertexPositions = positions;
+        for (const auto& pos : positions) {
+            this->occupiedCells.insert(pos);
+        }
+
     } else {
         // If no positions are provided, place vertices in order on the grid
         this->vertexPositions.clear();
+        this->vertexPositions.reserve(this->numVertices);
         for (int i = 0; i < this->numVertices; ++i) {
             int col = i % this->gridDimensions.width;
             int row = i / this->gridDimensions.width;
@@ -103,8 +128,37 @@ bool Graph::initializeVertexPositions(const std::vector<util::Position>& positio
                 return false;
             }
             this->vertexPositions.emplace_back(row, col);
+            this->occupiedCells.insert(util::Position(row, col));
         }
     }
+
+    this->paddedCells.clear();
+    this->paddedPositions.clear();
+    this->paddedPositions.reserve(this->numVertices * 4); // Worst case, every vertex has all 4 pads
+    // Identify padded positions
+    for (const auto& pos : this->occupiedCells) {
+        // Check all 4 possible adjacent positions (up, down, left, right)
+        std::vector<util::Position> adjacentPositions = {
+            util::Position(pos.row - 1, pos.col), // Up
+            util::Position(pos.row + 1, pos.col), // Down
+            util::Position(pos.row, pos.col - 1), // Left
+            util::Position(pos.row, pos.col + 1) // Right
+        };
+
+        for (const auto& adj : adjacentPositions) {
+            // Check if the adjacent position is within grid bounds and not occupied
+            bool cellInBounds = adj.row >= 0 && adj.row < this->gridDimensions.height
+                && adj.col >= 0 && adj.col < this->gridDimensions.width;
+            bool cellOccupied = this->occupiedCells.find(adj) != this->occupiedCells.end();
+            bool cellAlreadyPadded = this->paddedCells.find(adj) != this->paddedCells.end();
+            if (cellInBounds && !cellOccupied && !cellAlreadyPadded) {
+                this->paddedCells.insert(adj);
+                this->paddedPositions.push_back(adj);
+            }
+        }
+    }
+
+    this->paddedPositions.shrink_to_fit();
 
     return true;
 }
@@ -153,6 +207,81 @@ util::Position Graph::getVertexPosition(int vertex) const
 }
 
 /**
+ * @brief Updates the padded pixels after a swap has been made.
+ * @param vacatedPos The position that was vacated by the swap
+ * @param filledPos The position that was filled after the swap
+ */
+void Graph::updatePadding(util::Position vacatedPos, util::Position filledPos)
+{
+    std::vector<util::Position> oldAdjacentPositions
+        = { util::Position(vacatedPos.row - 1, vacatedPos.col),
+              util::Position(vacatedPos.row + 1, vacatedPos.col),
+              util::Position(vacatedPos.row, vacatedPos.col - 1),
+              util::Position(vacatedPos.row, vacatedPos.col + 1) };
+
+    std::vector<util::Position> newAdjacentPositions
+        = { util::Position(filledPos.row - 1, filledPos.col),
+              util::Position(filledPos.row + 1, filledPos.col),
+              util::Position(filledPos.row, filledPos.col - 1),
+              util::Position(filledPos.row, filledPos.col + 1) };
+
+    // Remove the old source from the occupied cells
+    this->occupiedCells.erase(vacatedPos);
+    this->occupiedCells.insert(filledPos);
+
+    // Ensure all adjacent positions by the old position have the right status
+    for (const auto& pos : oldAdjacentPositions) {
+        // If the position is known to be occupied, just move on
+        if (this->occupiedCells.find(pos) != this->occupiedCells.end())
+            continue;
+
+        // Check the surrounding vertices for being in the occupied positions
+        std::vector<util::Position> surroundingPositions
+            = { util::Position(pos.row - 1, pos.col), util::Position(pos.row + 1, pos.col),
+                  util::Position(pos.row, pos.col - 1), util::Position(pos.row, pos.col + 1) };
+        bool hasOccupied = false;
+        for (const auto& surroundingPos : surroundingPositions) {
+            hasOccupied = hasOccupied
+                || this->occupiedCells.find(surroundingPos) != this->occupiedCells.end();
+        }
+
+        if (hasOccupied)
+            break;
+
+        // If there aren't any occupied cells around this position, it should be removed from the
+        // padded cells
+        this->paddedCells.erase(pos);
+        // And we need to remove it from the padded positions vector
+        auto iter = std::find(this->paddedPositions.begin(), this->paddedPositions.end(), pos);
+        if (iter != this->paddedPositions.end()) {
+            this->paddedPositions.erase(iter);
+        }
+    }
+
+    // Now, add the cells surrounding the new filled position to the padded cells if they're not
+    // occupied or already there
+    for (const auto& pos : newAdjacentPositions) {
+        // If the position is known to be occupied, just move on
+        if (this->occupiedCells.find(pos) != this->occupiedCells.end())
+            continue;
+
+        // If the position is already padded, just move on
+        if (this->paddedCells.find(pos) != this->paddedCells.end())
+            continue;
+
+        // Check if the position is within grid bounds
+        bool cellInBounds = pos.row >= 0 && pos.row < this->gridDimensions.height && pos.col >= 0
+            && pos.col < this->gridDimensions.width;
+        if (!cellInBounds)
+            continue;
+
+        // If we reach here, the position is valid to be added as a padded cell
+        this->paddedCells.insert(pos);
+        this->paddedPositions.push_back(pos);
+    }
+}
+
+/**
  * @brief Scores the current layout of the graph based on the sum of squared
  * distances between connected vertices.
  * @return The score of the current graph layout.
@@ -182,7 +311,7 @@ int Graph::scoreGraphLayout() const
  * information to include in the report.
  * @return bool indicating success or failure of the report operation.
  */
-bool Graph::reportResults(const std::vector<std::string>& flags) const
+bool Graph::reportResults(const std::unordered_map<std::string, std::string>& flags) const
 {
     std::ofstream outputFile(this->outputFilePath);
     if (!outputFile.is_open()) {
@@ -284,7 +413,8 @@ void Graph::validateHeaderInfo(
  * @param maxVertexIndex An integer to track the maximum vertex index seen.
  */
 void Graph::validateEdgeInfo(std::ifstream& inputFile, std::string& line,
-    std::stringstream& lineStream, std::vector<std::vector<int>>& edges, int& maxVertexIndex)
+    std::stringstream& lineStream, Graph::Edges& forwardEdges, Graph::Edges& reverseEdges,
+    int& maxVertexIndex)
 {
     char lineType = '\0';
     int value1 = 0, value2 = 0;
@@ -332,12 +462,19 @@ void Graph::validateEdgeInfo(std::ifstream& inputFile, std::string& line,
 
         // Make sure we have space for this edge by checking the first value against the current
         // size
-        while (value1 >= static_cast<int>(edges.size())) {
-            edges.resize(edges.size() + 50, std::vector<int>()); // Expand by 50 vertices at a time
+        while (value1 >= static_cast<int>(forwardEdges.size())) {
+            forwardEdges.resize(
+                forwardEdges.size() + 50, std::vector<int>()); // Expand by 50 vertices at a time
+        }
+
+        while (value2 >= static_cast<int>(reverseEdges.size())) {
+            reverseEdges.resize(
+                reverseEdges.size() + 50, std::vector<int>()); // Expand by 50 vertices at a time
         }
 
         // Add the edge to the list
-        edges[value1].push_back(value2);
+        forwardEdges[value1].push_back(value2);
+        reverseEdges[value2].push_back(value1);
 
         lineStream.clear();
         lineType = '\0';
@@ -351,11 +488,12 @@ void Graph::validateEdgeInfo(std::ifstream& inputFile, std::string& line,
  *
  * @return std::vector<std::vector<int>> A vector of pairs representing the graph edges.
  */
-std::vector<std::vector<int>> Graph::getGraphEdges()
+std::pair<Graph::Edges, Graph::Edges> Graph::getGraphEdges()
 {
     // Get a stream from the input file
     std::ifstream inputFile(this->inputFilePath);
-    std::vector<std::vector<int>> edges;
+    Graph::Edges forwardEdges;
+    Graph::Edges reverseEdges;
 
     // If the file can't be opened, we're kind of stuck, so we just exit. There shouldn't be any
     // streams open, or allocated memory at this point, so there shouldn't be a need to clean up
@@ -372,10 +510,10 @@ std::vector<std::vector<int>> Graph::getGraphEdges()
     this->validateHeaderInfo(inputFile, line, lineStream);
 
     int maxVertexIndex = 0;
-    edges.resize(
-        100, std::vector<int>()); // Resize to 100 vertices, initializing each with an empty vector
+    forwardEdges.resize(100, std::vector<int>());
+    reverseEdges.resize(100, std::vector<int>());
 
-    this->validateEdgeInfo(inputFile, line, lineStream, edges, maxVertexIndex);
+    this->validateEdgeInfo(inputFile, line, lineStream, forwardEdges, reverseEdges, maxVertexIndex);
 
     // Final validation to ensure the highest vertex index matches the specified number of vertices
     if (maxVertexIndex != this->numVertices - 1) {
@@ -385,7 +523,8 @@ std::vector<std::vector<int>> Graph::getGraphEdges()
         exit(EXIT_FAILURE);
     }
 
-    edges.resize(this->numVertices); // Resize to the actual number of vertices
+    forwardEdges.resize(this->numVertices); // Resize to the actual number of vertices
+    reverseEdges.resize(this->numVertices);
     inputFile.close();
-    return edges;
+    return std::make_pair(forwardEdges, reverseEdges);
 }

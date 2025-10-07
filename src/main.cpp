@@ -20,14 +20,13 @@
 #define DATA_DIR "./data"
 #endif
 
-#include <iostream>
 /**
  * @brief Scratch space for any dumb test I want to run. It'll keep the main file cleaner.
  * @param graph The graph to perform tests on.
  * @param flags A vector of strings representing various flags that determine what additional
  * features to use.
  */
-void runTests(Graph& graph, const std::vector<std::string>& flags)
+void runTests(Graph& graph, const std::unordered_map<std::string, std::string>& flags)
 {
     auto swapFunc = [](Graph& g, int v1, int v2) {
         std::vector<util::Position>& positions = g.getVertexPositionsRef();
@@ -89,13 +88,27 @@ int main(int argc, char* argv[])
 
     Graph graph(inputFilePath, outputFilePath);
     graph.readInputFile();
+    sim::MutationMethod method = sim::NAIVE;
 
-    simulateAnnealing(graph, args.flags);
+    if (args.flagMap.find("--mutation-method") != args.flagMap.end()) {
+        std::string methodStr = args.flagMap.at("--mutation-method");
+        method = sim::stringToMutationMethod(methodStr);
+        if (method == sim::UNDEFINED) {
+            std::cerr << "Warning: Undefined mutation method '" << methodStr
+                      << "'. Defaulting to NAIVE." << std::endl;
+        }
+    } else {
+        std::cout << "No mutation method specified. Defaulting to NAIVE." << std::endl;
+    }
 
-    if (!graph.reportResults(args.flags)) {
+    sim::simulateAnnealing(graph, args.flagMap, method);
+
+    if (!graph.reportResults(args.flagMap)) {
         std::cerr << "Error: Failed to report results." << std::endl;
         return 1;
     }
+
+    std::cout << "Program completed successfully." << std::endl;
 
     return 0;
 }

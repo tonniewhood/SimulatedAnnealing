@@ -4,12 +4,13 @@
 
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace util {
 
 struct Args {
-    std::vector<std::string> flags;
+    std::unordered_map<std::string, std::string> flagMap;
     std::vector<std::string> positional;
 };
 
@@ -36,11 +37,29 @@ struct Position {
 
     bool operator==(const Position& other) const { return row == other.row && col == other.col; }
 
+    bool operator!=(const Position& other) const { return !(*this == other); }
+
+    bool operator<(const Position& other) const
+    {
+        if (row != other.row)
+            return row < other.row;
+        return col < other.col;
+    }
+
+    bool operator>(const Position& other) const { return other < *this; }
+
     int distanceTo(const Position& other) const
     {
         return std::abs(row - other.row) + std::abs(col - other.col);
     }
 };
+
+/**
+ * @brief Converts a string to lowercase.
+ * @param str The input string.
+ * @return A new string with all characters in lowercase.
+ */
+std::string toLower(const std::string& str);
 
 /**
  * @brief Parses command-line arguments into flags and positional arguments. If improper arguments

@@ -55,9 +55,23 @@ env/
 *.VC.db
 *.VC.VC.opendb
 *.clang-format
+Scratch/
+scratch/
 
 # Data files not under the data directory
 *.txt
 *.json
 !data/*.txt
 !data/*.json
+
+# Images not in the figures directory
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+!figures/*.png
+!figures/*.jpg
+!figures/*.jpeg
+!figures/*.gif
+!figures/*.svg

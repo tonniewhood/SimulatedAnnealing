@@ -39,10 +39,12 @@ ifdef ARGS
 endif
 
 # --- Declare command line arguments ---
-INPUT  ?= input.txt
-OUTPUT ?= output.txt
-FLAGS  ?= ""
-ARGS   ?= $(INPUT) $(OUTPUT) $(FLAGS)
+INPUT          ?= input.txt
+OUTPUT         ?= output.txt
+MUTATION_MEHOD ?= naive
+FLAGS          ?= "--mutation-method="$(MUTATION_MEHOD)
+# FLAGS          ?= ""
+ARGS           ?= $(INPUT) $(OUTPUT) $(FLAGS)
 
 # --- Utilities ---
 MKDIR_P := mkdir -p

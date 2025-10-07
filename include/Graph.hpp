@@ -5,6 +5,10 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <queue>
+#include <set>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "util.hpp"
@@ -14,6 +18,8 @@
  * interface for the graph rather than actually implementing the annealing algorithm here.
  */
 class Graph {
+
+    typedef std::vector<std::vector<int>> Edges;
 
 public:
     Graph(const std::filesystem::path& inputFilePath, const std::filesystem::path& outputFilePath);
@@ -48,6 +54,13 @@ public:
     util::Position getVertexPosition(int vertex) const;
 
     /**
+     * @brief Updates the padded pixels after a swap has been made.
+     * @param vacatedPos The position that was vacated by the swap
+     * @param filledPos The position that was filled after the swap
+     */
+    void updatePadding(util::Position vacatedPos, util::Position filledPos);
+
+    /**
      * @brief Scores the current layout of the graph based on the sum of squared
      * distances between connected vertices.
      * @return The score of the current graph layout.
@@ -60,18 +73,20 @@ public:
      * information to include in the report.
      * @return bool indicating success or failure of the report operation.
      */
-    bool reportResults(const std::vector<std::string>& flags) const;
+    bool reportResults(const std::unordered_map<std::string, std::string>& flags) const;
 
     /* Getters for various member variables */
     util::GridDimensions getGridDimensions() const { return this->gridDimensions; }
     int getGridWidth() const { return this->gridDimensions.width; }
     int getGridHeight() const { return this->gridDimensions.height; }
     int getNumVertices() const { return this->numVertices; }
+    int getNumPaddedPositions() const { return static_cast<int>(this->paddedPositions.size()); }
     std::vector<int> getOffsets() const { return this->offsets; }
     std::vector<int> getNeighbors() const { return this->neighbors; }
     std::vector<util::Position> getConstVertexPositions() const { return this->vertexPositions; }
     std::vector<util::Position> getCopyVertexPositions() const { return this->vertexPositions; }
     std::vector<util::Position>& getVertexPositionsRef() { return this->vertexPositions; }
+    std::vector<util::Position>& getPaddingPositionsRef() { return this->paddedPositions; }
 
 private:
     /**
@@ -94,7 +109,8 @@ private:
      * @param maxVertexIndex An integer to track the maximum vertex index seen.
      */
     void validateEdgeInfo(std::ifstream& inputFile, std::string& line,
-        std::stringstream& lineStream, std::vector<std::vector<int>>& edges, int& maxVertexIndex);
+        std::stringstream& lineStream, Edges& forwardEdges, Edges& reverseEdges,
+        int& maxVertexIndex);
 
     /**
      * @brief Reads the graph edges from the input file and returns them as a vector of pairs. Each
@@ -102,7 +118,7 @@ private:
      *
      * @return std::vector<std::vector<int>> A vector of pairs representing the graph edges.
      */
-    std::vector<std::vector<int>> getGraphEdges();
+    std::pair<Edges, Edges> getGraphEdges();
 
     std::filesystem::path inputFilePath;
     std::filesystem::path outputFilePath;
@@ -135,7 +151,13 @@ private:
      */
     std::vector<int> offsets;
     std::vector<int> neighbors;
+    std::vector<int> reverseOffsets;
+    std::vector<int> reverseNeighbors;
+    std::priority_queue<int> degreeQueue;
     std::vector<util::Position> vertexPositions;
+    std::vector<util::Position> paddedPositions;
+    std::set<util::Position> occupiedCells;
+    std::set<util::Position> paddedCells;
 };
 
 #endif // GRAPH_HPP
