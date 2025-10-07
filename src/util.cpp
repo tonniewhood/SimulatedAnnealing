@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "util.hpp"
@@ -42,6 +43,65 @@ std::string util::toLower(const std::string& str)
     return lowerStr;
 }
 
+/**
+ * @brief Converts a plot type string into the corresponding flag.
+ * @param plotTypeStr The input plot type string.
+ * @return The corresponding PlotType flag value.
+ */
+util::PlotType util::stringToPlotType(const std::string& plotTypeStr)
+{
+    PlotType plotType = 0x00;
+    std::string lowerStr = toLower(plotTypeStr);
+    std::vector<std::string> types(4, "");
+    std::unordered_set<std::string> validType = { "all", "graph", "grid", "stats" };
+    std::unordered_set<std::string> seenTypes;
+    while (true) {
+        size_t commaPos = lowerStr.find(',');
+        if (commaPos != std::string::npos) {
+            std::string type = lowerStr.substr(0, commaPos);
+            if (validType.find(type) == validType.end()) {
+                std::cerr << "Warning: Unknown plot type '" << type << "' found."
+                          << " Valid types are 'all', 'graph', 'grid', and 'stats'." << std::endl;
+                return PlotFlags::NONE; // Return NONE on error
+            }
+
+            if (seenTypes.find(type) != seenTypes.end()) {
+                std::cerr << "Warning: Duplicate plot type '" << type << "' found." << std::endl;
+            } else {
+                types.push_back(type);
+                seenTypes.insert(type);
+            }
+
+            lowerStr = lowerStr.substr(commaPos + 1);
+        } else {
+
+            if (validType.find(lowerStr) == validType.end()) {
+                std::cerr << "Warning: Unknown plot type '" << lowerStr << "' found."
+                          << " Valid types are 'all', 'graph', 'grid', and 'stats'." << std::endl;
+                return PlotFlags::NONE; // Return NONE on error
+            }
+
+            types.push_back(lowerStr);
+            break;
+        }
+    }
+
+    types.shrink_to_fit();
+
+    for (const std::string& type : types) {
+        if (type == "all") {
+            plotType |= PlotFlags::ALL_MASK;
+        } else if (type == "graph") {
+            plotType |= PlotFlags::GRAPH_MASK;
+        } else if (type == "grid") {
+            plotType |= PlotFlags::GRID_MASK;
+        } else if (type == "stats") {
+            plotType |= PlotFlags::STATS_MASK;
+        }
+    }
+
+    return plotType;
+}
 /**
  * @brief Parses command-line arguments into flags and positional arguments. If improper arguments
  * are passed, the program will exit.

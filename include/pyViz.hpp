@@ -13,15 +13,19 @@ namespace viz {
  * @brief Initialize the Python visualization system
  * @param gridRows Number of rows in the grid
  * @param gridCols Number of columns in the grid
+ * @param numVertices Number of vertices in the graph
+ * @param offsets Adjacency list offsets for the graph
+ * @param neighbors Adjacency list neighbors for the graph
+ * @param initialPositions Initial positions of the vertices
  * @return true if initialization successful
  */
-bool initializeVisualizer(int gridRows, int gridCols);
+bool initializeVisualizer(int gridRows, int gridCols, int numVertices,
+    const std::vector<int>& offsets, const std::vector<int>& neighbors);
 
 /**
  * @brief Display the graph structure (call once at start)
- * @param edges Vector of edge pairs representing the graph
  */
-void displayGraph(const std::vector<int>& offsets, const std::vector<int>& neighbors);
+void displayGraph();
 
 /**
  * @brief Update the grid visualization with current positions
@@ -31,6 +35,12 @@ void displayGraph(const std::vector<int>& offsets, const std::vector<int>& neigh
  * @note Only updates display every 100 iterations to avoid overwhelming
  */
 void updateVisualization(const std::vector<util::Position>& positions, int iteration, double score);
+
+/**
+ * @brief Check if the visualization system is still running
+ * @return true if running, false if shutdown
+ */
+bool isRunning();
 
 /**
  * @brief Shutdown the visualization system and cleanup threads

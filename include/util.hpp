@@ -9,6 +9,15 @@
 
 namespace util {
 
+enum PlotFlags {
+    NONE = 0x00,
+    GRID_MASK = 0x01,
+    GRAPH_MASK = 0x02,
+    STATS_MASK = 0x04,
+    ALL_MASK = 0x07
+};
+typedef uint8_t PlotType; // Only need 3 bits to determine what to plot
+
 struct Args {
     std::unordered_map<std::string, std::string> flagMap;
     std::vector<std::string> positional;
@@ -60,6 +69,13 @@ struct Position {
  * @return A new string with all characters in lowercase.
  */
 std::string toLower(const std::string& str);
+
+/**
+ * @brief Converts a plot type string into the corresponding enum flag.
+ * @param plotTypeStr The input plot type string.
+ * @return The corresponding PlotType enum value.
+ */
+PlotType stringToPlotType(const std::string& plotTypeStr);
 
 /**
  * @brief Parses command-line arguments into flags and positional arguments. If improper arguments

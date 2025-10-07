@@ -28,10 +28,14 @@ class AnimatedGrid:
         self.texts = []
         self.current_positions = []
         self.current_indices = []
+        self.sequence = []
         
         # Animation properties
         self.is_running = False
         self.animation_obj = None
+        
+        # Callback for when window is closed
+        self.close_callback = None
         
     def setup_plot(self):
         """Initialize the plot with grid background."""
@@ -72,6 +76,7 @@ class AnimatedGrid:
         
         # Store new state
         self.current_positions = new_positions.copy()
+        self.sequence.append(new_positions.copy())
         self.current_indices = new_indices.copy() if new_indices else list(range(len(new_positions)))
         
         # Draw new nodes
@@ -107,6 +112,20 @@ class AnimatedGrid:
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()
         
+    def set_close_callback(self, callback):
+        """
+        Set a callback function that will be called when the window is closed.
+        The callback should take no parameters and return nothing.
+        """
+        self.close_callback = callback
+        self.fig.canvas.mpl_connect('close_event', self._on_close)
+    
+    def _on_close(self, event):
+        """Internal method called when window is closed."""
+        self.is_running = False
+        if self.close_callback:
+            self.close_callback()
+    
     def live_update_mode(self):
         """
         Set up for live updates during simulation.
@@ -115,7 +134,17 @@ class AnimatedGrid:
         plt.ion()  # Turn on interactive mode
         plt.show()
         self.is_running = True
-        
+
+    def hold(self):
+        """Hold the animation open."""
+        plt.ioff()
+        plt.show(block=True)
+
+    def continue_anim(self):
+        """Continue the animation."""
+        plt.ion()
+        self.is_running = True
+
     def close(self):
         """Close the animation."""
         self.is_running = False

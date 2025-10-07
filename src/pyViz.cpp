@@ -1,3 +1,23 @@
+/**
+ * @file pyViz.cpp
+ * @brief C++ interface to Python visualization for graph annealing
+ *
+ * This file implements a C++ interface to a Python-based visualization system
+ * for visualizing the graph annealing process. It uses the Python C API to
+ * initialize the Python interpreter, load visualization modules, and update the
+ * visualization in a separate thread.
+ *
+ * I should state, that this was largely created by Github Copilot. I'm not super familiar
+ * with the embedded Python C API, so I let Copilot generate a lot of the boilerplate
+ * code for me. I then modified it to fit my needs. I don't want to take full credit as it's
+ * definitely not solely my work.
+ *
+ * One of the big issues I faced was fighing with the Global Interpreter Lock (GIL). Copilot did
+ * a lot of the heavy lifting in regard to where I need to acquire and release the GIL and maybe
+ * more importantly how.
+ */
+
+#ifdef HAVE_PYTHON
 
 #include <Python.h>
 #include <atomic>
@@ -22,11 +42,8 @@ struct VizUpdate {
 
     Type type;
     std::vector<util::Position> positions;
-    std::vector<std::pair<int, int>> edges;
     int iteration = 0;
     double score = 0.0;
-    int gridRows = 0;
-    int gridCols = 0;
 
     VizUpdate(Type t)
         : type(t)
@@ -42,22 +59,35 @@ private:
     std::condition_variable queueCondition;
     std::atomic<bool> shouldStop { false };
 
-    PyObject* pModule = nullptr;
+    PyObject* pGridModule = nullptr;
+    PyObject* pGraphModule = nullptr;
     PyObject* pGridClass = nullptr;
+    PyObject* pGraphClass = nullptr;
     PyObject* pGridInstance = nullptr;
-    PyObject* pGraphFunc = nullptr;
+    PyObject* pGraphInstance = nullptr;
 
     int gridRows = 0;
     int gridCols = 0;
+    int numVertices = 0;
     bool initialized = false;
+    bool isRunningFlag = false;
+
+    std::vector<int> offsets = {};
+    std::vector<int> neighbors = {};
+    std::vector<util::Position> lastPositions = {};
+
+    // Store main thread state for proper GIL management
+    PyThreadState* mainThreadState = nullptr;
 
 public:
     PyVisualizer() = default;
     ~PyVisualizer() { shutdown(); }
 
-    bool initialize(int rows, int cols);
-    void displayGraph(const std::vector<std::pair<int, int>>& edges);
+    bool initialize(int rows, int cols, int numVertices, const std::vector<int>& offsets,
+        const std::vector<int>& neighbors);
+    void displayGraph();
     void updateGrid(const std::vector<util::Position>& positions, int iteration, double score);
+    bool isRunning() const { return this->isRunningFlag; }
     void shutdown();
 
 private:
@@ -71,71 +101,106 @@ private:
 // Global instance
 static PyVisualizer g_visualizer;
 
-bool PyVisualizer::initialize(int rows, int cols)
+bool PyVisualizer::initialize(int rows, int cols, int numVertices, const std::vector<int>& offsets,
+    const std::vector<int>& neighbors)
 {
     if (initialized)
         return true;
 
-    gridRows = rows;
-    gridCols = cols;
+    this->gridRows = rows;
+    this->gridCols = cols;
+    this->numVertices = numVertices;
+    this->offsets = offsets;
+    this->neighbors = neighbors;
 
     if (!initializePython()) {
         std::cerr << "Failed to initialize Python visualization" << std::endl;
         return false;
     }
 
+    // CRITICAL: Release main thread's GIL so other threads can acquire it
+    // Save the current thread state and release GIL
+    this->mainThreadState = PyEval_SaveThread();
+    std::cout << "Main thread released GIL, saved thread state" << std::endl;
+
     // Start visualization thread
     vizThread = std::thread(&PyVisualizer::visualizationLoop, this);
     initialized = true;
 
-    std::cout << "Python visualizer initialized (" << rows << "x" << cols << " grid)" << std::endl;
+    std::cout << "Python visualizer initialized (" << rows << "x" << cols << " grid) with "
+              << numVertices << " vertices" << std::endl;
     return true;
 }
 
 bool PyVisualizer::initializePython()
 {
-    // Initialize Python interpreter
+    // Initialize Python interpreter with threading support
     if (!Py_IsInitialized()) {
         Py_Initialize();
         if (!Py_IsInitialized()) {
             std::cerr << "Failed to initialize Python" << std::endl;
             return false;
         }
+
+        // Initialize threading support (deprecated in Python 3.7+ but still works)
+        if (!PyEval_ThreadsInitialized()) {
+            PyEval_InitThreads();
+        }
     }
+
+    // Acquire GIL for this thread
+    PyGILState_STATE gstate = PyGILState_Ensure();
 
     // Add current directory to Python path
     PyRun_SimpleString("import sys");
     PyRun_SimpleString("sys.path.append('./scripts')");
 
-    // Import our visualization module
-    pModule = PyImport_ImportModule("viz");
-    if (!pModule) {
+    // Import our module for grid visualization
+    pGridModule = PyImport_ImportModule("AnimatedGrid");
+    if (!pGridModule) {
         PyErr_Print();
-        std::cerr << "Failed to import viz module" << std::endl;
+        std::cerr << "Failed to import grid visualization module" << std::endl;
+        return false;
+    }
+
+    // Import our graph visualization module
+    pGraphModule = PyImport_ImportModule("BasicDigraph");
+    if (!pGraphModule) {
+        PyErr_Print();
+        std::cerr << "Failed to import graph visualization module" << std::endl;
         return false;
     }
 
     // Get AnimatedGrid class
-    pGridClass = PyObject_GetAttrString(pModule, "AnimatedGrid");
+    pGridClass = PyObject_GetAttrString(pGridModule, "AnimatedGrid");
     if (!pGridClass || !PyCallable_Check(pGridClass)) {
         PyErr_Print();
         std::cerr << "Failed to get AnimatedGrid class" << std::endl;
         return false;
     }
 
-    // Get test_graph function
-    pGraphFunc = PyObject_GetAttrString(pModule, "test_graph");
-    if (!pGraphFunc || !PyCallable_Check(pGraphFunc)) {
+    // Get BasicDigraph class
+    pGraphClass = PyObject_GetAttrString(pGraphModule, "BasicDigraph");
+    if (!pGraphClass || !PyCallable_Check(pGraphClass)) {
         PyErr_Print();
-        std::cerr << "Failed to get test_graph function" << std::endl;
+        std::cerr << "Failed to get BasicDigraph class" << std::endl;
+        PyGILState_Release(gstate);
         return false;
     }
 
+    this->isRunningFlag = true;
+
+    // Release GIL
+    PyGILState_Release(gstate);
     return true;
 }
 
 void PyVisualizer::visualizationLoop()
 {
+    // This thread needs to be registered with Python
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    PyGILState_Release(gstate); // Release immediately, acquire per operation
+
     while (!shouldStop) {
         std::unique_lock<std::mutex> lock(queueMutex);
 
@@ -147,6 +212,7 @@ void PyVisualizer::visualizationLoop()
 
         // Process all queued updates
         while (!updateQueue.empty()) {
+
             VizUpdate update = updateQueue.front();
             updateQueue.pop();
             lock.unlock();
@@ -167,93 +233,154 @@ void PyVisualizer::visualizationLoop()
         }
     }
 
+    this->isRunningFlag = false;
     cleanupPython();
 }
 
 void PyVisualizer::processGraphDisplay(const VizUpdate& update)
 {
-    // For now, just call the test_graph function
-    // TODO: Create a custom graph display function that takes edges as parameter
-    if (pGraphFunc) {
-        PyObject* pResult = PyObject_CallObject(pGraphFunc, nullptr);
+    // Acquire GIL for Python operations
+    PyGILState_STATE gstate = PyGILState_Ensure();
+
+    if (!pGraphInstance) {
+        // Create graph instance on first display (probably will also only be the only display)
+        std::cout << "Creating graph with " << this->numVertices << " vertices for visualization"
+                  << std::endl;
+
+        // std::cout << "Total edges: " << totalEdges << std::endl;
+        PyObject* pEdges = PyList_New(this->neighbors.size());
+        if (!pEdges) {
+            std::cerr << "Failed to create Python list for edges" << std::endl;
+            PyGILState_Release(gstate);
+            return;
+        }
+
+        int edgeIndex = 0;
+        for (int i = 0; i < numVertices; i++) {
+            for (int j = offsets[i]; j < offsets[i + 1]; j++) {
+                PyObject* pEdge = PyTuple_New(2);
+                if (!pEdge) {
+                    std::cerr << "Failed to create edge tuple" << std::endl;
+                    Py_DECREF(pEdges);
+                    PyGILState_Release(gstate);
+                    return;
+                }
+
+                PyTuple_SetItem(pEdge, 0, PyLong_FromLong(i));
+                PyTuple_SetItem(pEdge, 1, PyLong_FromLong(neighbors[j]));
+                PyList_SetItem(pEdges, edgeIndex++, pEdge);
+            }
+        }
+
+        PyObject* pArgs = PyTuple_New(1);
+        PyTuple_SetItem(pArgs, 0, pEdges);
+
+        pGraphInstance = PyObject_CallObject(pGraphClass, pArgs);
+        Py_DECREF(pArgs);
+
+        if (!pGraphInstance) {
+            PyErr_Print();
+            PyGILState_Release(gstate);
+            std::cerr << "Failed to create graph instance" << std::endl;
+            return;
+        }
+
+        // Call display method
+        PyObject* pResult = PyObject_CallMethod(pGraphInstance, "display", nullptr);
         if (!pResult) {
             PyErr_Print();
-        } else {
-            Py_DECREF(pResult);
+            PyGILState_Release(gstate);
+            std::cerr << "Failed to call display method on graph instance" << std::endl;
+            return;
         }
+        Py_DECREF(pResult);
     }
+
+    // Release GIL
+    PyGILState_Release(gstate);
+    // For now, we only display the graph once at the start
+    // Future updates could modify the graph if needed
 }
 
 void PyVisualizer::processGridUpdate(const VizUpdate& update)
 {
+    // Acquire GIL for Python operations
+    PyGILState_STATE gstate = PyGILState_Ensure();
+
     if (!pGridInstance) {
         // Create grid instance on first update
-        PyObject* pArgs = PyTuple_New(3);
-        PyTuple_SetItem(pArgs, 0, PyLong_FromLong(update.gridRows));
-        PyTuple_SetItem(pArgs, 1, PyLong_FromLong(update.gridCols));
+        PyObject* pArgs = PyTuple_New(5);
+        PyTuple_SetItem(pArgs, 0, PyLong_FromLong(this->gridRows));
+        PyTuple_SetItem(pArgs, 1, PyLong_FromLong(this->gridCols));
         PyTuple_SetItem(pArgs, 2, PyUnicode_FromString("C++ Annealing Visualization"));
+        PyTuple_SetItem(pArgs, 3, PyBool_FromLong(1 /* use_color_map */));
+        PyTuple_SetItem(pArgs, 4, PyLong_FromLong(this->numVertices));
 
         pGridInstance = PyObject_CallObject(pGridClass, pArgs);
         Py_DECREF(pArgs);
 
         if (!pGridInstance) {
             PyErr_Print();
+            PyGILState_Release(gstate);
+            std::cerr << "Failed to create grid instance" << std::endl;
             return;
         }
 
-        // Enable live update mode
-        PyObject* pLiveMethod = PyObject_GetAttrString(pGridInstance, "live_update_mode");
-        if (pLiveMethod && PyCallable_Check(pLiveMethod)) {
-            PyObject* pResult = PyObject_CallObject(pLiveMethod, nullptr);
-            if (pResult)
-                Py_DECREF(pResult);
-            Py_DECREF(pLiveMethod);
+        PyObject* pResult = PyObject_CallMethod(pGridInstance, "live_update_mode", nullptr);
+        if (!pResult) {
+            PyErr_Print();
+            PyGILState_Release(gstate);
+            std::cerr << "Failed to set live update mode on grid instance" << std::endl;
+            return;
         }
-    }
-
-    // Update grid positions
-    PyObject* pUpdateMethod = PyObject_GetAttrString(pGridInstance, "update_positions");
-    if (!pUpdateMethod || !PyCallable_Check(pUpdateMethod)) {
-        std::cerr << "Failed to get update_positions method" << std::endl;
-        return;
-    }
-
-    // Convert positions to Python list
-    PyObject* pPositionsList = PyList_New(update.positions.size());
-    for (size_t i = 0; i < update.positions.size(); ++i) {
-        PyObject* pTuple = PyTuple_New(2);
-        PyTuple_SetItem(pTuple, 0, PyLong_FromLong(update.positions[i].row));
-        PyTuple_SetItem(pTuple, 1, PyLong_FromLong(update.positions[i].col));
-        PyList_SetItem(pPositionsList, i, pTuple);
-    }
-
-    // Create arguments for update_positions
-    PyObject* pArgs = PyTuple_New(4);
-    PyTuple_SetItem(pArgs, 0, pPositionsList);
-    PyTuple_SetItem(pArgs, 1, Py_None);
-    Py_INCREF(Py_None); // node_indices
-    PyTuple_SetItem(pArgs, 2, PyLong_FromLong(update.iteration));
-    PyTuple_SetItem(pArgs, 3, PyFloat_FromDouble(update.score));
-
-    // Call update_positions
-    PyObject* pResult = PyObject_CallObject(pUpdateMethod, pArgs);
-    if (!pResult) {
-        PyErr_Print();
-    } else {
         Py_DECREF(pResult);
     }
 
-    Py_DECREF(pArgs);
-    Py_DECREF(pUpdateMethod);
+    // Prepare positions as a Python list of tuples
+    PyObject* pPosList = PyList_New(update.positions.size());
+    if (!pPosList) {
+        PyGILState_Release(gstate);
+        std::cerr << "Failed to create Python list for positions" << std::endl;
+        return;
+    }
+
+    for (size_t i = 0; i < update.positions.size(); i++) {
+        PyObject* pPosTuple = PyTuple_New(2);
+        if (!pPosTuple) {
+            Py_DECREF(pPosList);
+            PyGILState_Release(gstate);
+            std::cerr << "Failed to create position tuple" << std::endl;
+            return;
+        }
+
+        PyTuple_SetItem(pPosTuple, 0, PyLong_FromLong(update.positions[i].row));
+        PyTuple_SetItem(pPosTuple, 1, PyLong_FromLong(update.positions[i].col));
+        PyList_SetItem(pPosList, i, pPosTuple);
+    }
+
+    PyObject* pResult = PyObject_CallMethod(pGridInstance, "update_positions", "OOllO", pPosList,
+        Py_None, PyLong_FromLong(update.iteration), PyLong_FromLong(update.score),
+        PyBool_FromLong(1), nullptr);
+    if (!pResult) {
+        PyErr_Print();
+        Py_DECREF(pPosList);
+        PyGILState_Release(gstate);
+        std::cerr << "Failed to call update_positions on grid instance" << std::endl;
+        return;
+    }
+    Py_DECREF(pResult);
+    Py_DECREF(pPosList);
+
+    // Release GIL
+    PyGILState_Release(gstate);
 }
 
-void PyVisualizer::displayGraph(const std::vector<std::pair<int, int>>& edges)
+void PyVisualizer::displayGraph()
 {
     if (!initialized)
         return;
 
     VizUpdate update(VizUpdate::GRAPH_DISPLAY);
-    update.edges = edges;
 
     {
         std::lock_guard<std::mutex> lock(queueMutex);
@@ -272,8 +399,6 @@ void PyVisualizer::updateGrid(
     update.positions = positions;
     update.iteration = iteration;
     update.score = score;
-    update.gridRows = gridRows;
-    update.gridCols = gridCols;
 
     {
         std::lock_guard<std::mutex> lock(queueMutex);
@@ -284,6 +409,12 @@ void PyVisualizer::updateGrid(
 
 void PyVisualizer::cleanupPython()
 {
+    // Restore main thread state to cleanup Python objects
+    if (mainThreadState) {
+        PyEval_RestoreThread(mainThreadState);
+        mainThreadState = nullptr;
+    }
+
     if (pGridInstance) {
         Py_DECREF(pGridInstance);
         pGridInstance = nullptr;
@@ -292,13 +423,21 @@ void PyVisualizer::cleanupPython()
         Py_DECREF(pGridClass);
         pGridClass = nullptr;
     }
-    if (pGraphFunc) {
-        Py_DECREF(pGraphFunc);
-        pGraphFunc = nullptr;
+    if (pGridModule) {
+        Py_DECREF(pGridModule);
+        pGridModule = nullptr;
     }
-    if (pModule) {
-        Py_DECREF(pModule);
-        pModule = nullptr;
+    if (pGraphInstance) {
+        Py_DECREF(pGraphInstance);
+        pGraphInstance = nullptr;
+    }
+    if (pGraphClass) {
+        Py_DECREF(pGraphClass);
+        pGraphClass = nullptr;
+    }
+    if (pGraphModule) {
+        Py_DECREF(pGraphModule);
+        pGraphModule = nullptr;
     }
 }
 
@@ -321,30 +460,56 @@ void PyVisualizer::shutdown()
     }
 
     initialized = false;
-    std::cout << "Python visualizer shut down" << std::endl;
 }
 
 // Public C++ API
-bool initializeVisualizer(int gridRows, int gridCols)
+bool initializeVisualizer(int gridRows, int gridCols, int numVertices,
+    const std::vector<int>& offsets, const std::vector<int>& neighbors)
 {
-    return g_visualizer.initialize(gridRows, gridCols);
+    return g_visualizer.initialize(gridRows, gridCols, numVertices, offsets, neighbors);
 }
 
-void displayGraph(const std::vector<std::pair<int, int>>& edges)
-{
-    g_visualizer.displayGraph(edges);
-}
+void displayGraph() { g_visualizer.displayGraph(); }
+
+bool isRunning() { return g_visualizer.isRunning(); }
 
 void updateVisualization(const std::vector<util::Position>& positions, int iteration, double score)
 {
-    // Only update every 100 iterations to avoid overwhelming the display
-    static int lastUpdate = -100;
-    if (iteration - lastUpdate >= 100 || iteration == 0) {
-        g_visualizer.updateGrid(positions, iteration, score);
-        lastUpdate = iteration;
-    }
+    g_visualizer.updateGrid(positions, iteration, score);
 }
 
 void shutdownVisualizer() { g_visualizer.shutdown(); }
 
 } // namespace viz
+
+#else
+
+#include <iostream>
+
+#include "pyViz.hpp"
+
+namespace viz {
+
+bool initializeVisualizer(int, int)
+{
+    std::cerr << "Python visualization not available (HAVE_PYTHON not defined)" << std::endl;
+    return false;
+}
+
+void displayGraph(const std::vector<int>&, const std::vector<int>&)
+{
+    std::cerr << "Python visualization not available (HAVE_PYTHON not defined)" << std::endl;
+}
+
+void updateVisualization(const std::vector<util::Position>&, int, double)
+{
+    std::cerr << "Python visualization not available (HAVE_PYTHON not defined)" << std::endl;
+}
+
+void shutdownVisualizer()
+{
+    std::cerr << "Python visualization not available (HAVE_PYTHON not defined)" << std::endl;
+}
+} // namespace viz
+
+#endif // HAVE_PYTHON

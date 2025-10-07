@@ -1,17 +1,26 @@
 
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <random>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
 #include "Graph.hpp"
+#include "pyViz.hpp"
 #include "simulateAnnealing.hpp"
+#include "util.hpp"
 
 #define INITIAL_TEMPERATURE 10000000.0f
 #define COOLING_RATE 0.9999f
 #define THRESHOLD_TEMPERATURE 1.0f
+
+using steadyClock = std::chrono::steady_clock;
+using namespace std::chrono_literals;
+constexpr double target_fps = 30.0;
+constexpr auto frame_dt = 1.0s / target_fps;
 
 namespace sim {
 
@@ -164,8 +173,8 @@ void revertConway(Graph& graph, const SolutionAlterations& alterations)
  * @param flags A vector of strings representing various flags that determine what additional
  * features to use.
  */
-void simulateAnnealing(
-    Graph& graph, const std::unordered_map<std::string, std::string>& flags, MutationMethod method)
+void simulateAnnealing(Graph& graph, const std::unordered_map<std::string, std::string>& flags,
+    util::PlotType plotType, MutationMethod method)
 {
     /*
     Pseudocode for Simulated Annealing:
@@ -213,12 +222,20 @@ void simulateAnnealing(
         return;
     }
 
+    // ---- Used if we're plotting, but we still need he handles inside the loop ----
+    auto next_frame = steadyClock::now() + frame_dt;
+
     std::cout << "Starting Simulated Annealing with method: " << mutationMethodToString(method)
               << std::endl;
 
     // Get an initial solution (it'll just be sequential placement on the grid for now)
     graph.initializeVertexPositions();
     int lastUsedDistance = graph.scoreGraphLayout();
+
+    // Show initial state immediately
+    if (plotType & util::GRID_MASK) {
+        viz::updateVisualization(graph.getConstVertexPositions(), 0, lastUsedDistance);
+    }
 
     // Use this to track the best positions found so far to make sure we're not potentially
     // losing a better position when the randomness of the algorithm kicks in
@@ -257,14 +274,41 @@ void simulateAnnealing(
                 restoreMethod(graph, alterations);
             }
         }
+
+        // Potentially visualize the current state of the graph
+        if (plotType & util::GRID_MASK) {
+            auto now = steadyClock::now();
+            if (now >= next_frame) {
+                viz::updateVisualization(
+                    graph.getConstVertexPositions(), iteration, lastUsedDistance);
+
+                // Calculate next frame time, handle potential frame skipping
+                while (next_frame <= now) {
+                    next_frame += frame_dt;
+                }
+            }
+        }
+
+        if (plotType & util::STATS_MASK) {
+            if (iteration == 0) {
+                std::cout << "Not yet implemented" << std::endl;
+            }
+        }
+
         temperature *= COOLING_RATE; // Cool down the system
         iteration++; // Just used to debug/report
     }
     // At the end, make sure we have the best positions found during the entire process
     graph.getVertexPositionsRef() = lastBestPositions;
 
+    // if (plotType & util::GRID_MASK) {
+    //     viz::updateVisualization(graph.getConstVertexPositions(), iteration, lastUsedDistance);
+    //     while (viz::isRunning()) {
+    //         std::this_thread::sleep_for(100ms);
+    //     }
+    // }
+
     std::cout << "Completed Simulated Annealing" << std::endl;
     std::cout << "Run " << iteration << " iterations." << std::endl;
 }
-
 }; // namespace sim

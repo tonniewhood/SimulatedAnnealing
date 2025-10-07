@@ -45,7 +45,7 @@ typedef std::function<void(Graph& graph, const SolutionAlterations& alterations)
  * features to use.
  */
 void simulateAnnealing(Graph& graph, const std::unordered_map<std::string, std::string>& flags,
-    MutationMethod method = NAIVE);
+    util::PlotType plotType, MutationMethod method = NAIVE);
 
 /**
  * @brief Converts a mutation method into the corresponding string value

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Graph.hpp"
+#include "pyViz.hpp"
 #include "simulateAnnealing.hpp"
 #include "util.hpp"
 
@@ -101,11 +102,34 @@ int main(int argc, char* argv[])
         std::cout << "No mutation method specified. Defaulting to NAIVE." << std::endl;
     }
 
-    sim::simulateAnnealing(graph, args.flagMap, method);
+    util::PlotType plotType = util::NONE;
+    if (args.flagMap.find("--plot-type") != args.flagMap.end()) {
+        std::string plotTypeStr = args.flagMap.at("--plot-type");
+        plotType = util::stringToPlotType(plotTypeStr);
+        if (plotType == util::NONE) {
+            std::cerr << "Warning: Undefined plot type '" << plotTypeStr
+                      << "'. No visualization will be used." << std::endl;
+        } else {
+            std::cout << "Using plot type: " << plotTypeStr << std::endl;
+            viz::initializeVisualizer(graph.getGridHeight(), graph.getGridWidth(),
+                graph.getNumVertices(), graph.getOffsets(), graph.getNeighbors());
+        }
+    }
+
+    if (plotType & util::GRAPH_MASK) {
+        std::cout << "Displaying initial graph state..." << std::endl;
+        viz::displayGraph();
+    }
+
+    sim::simulateAnnealing(graph, args.flagMap, plotType, method);
 
     if (!graph.reportResults(args.flagMap)) {
         std::cerr << "Error: Failed to report results." << std::endl;
         return 1;
+    }
+
+    if (plotType != util::NONE) {
+        viz::shutdownVisualizer();
     }
 
     std::cout << "Program completed successfully." << std::endl;
