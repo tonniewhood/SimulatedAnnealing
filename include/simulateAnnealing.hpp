@@ -3,10 +3,19 @@
 #define SIMULATE_ANNEALING_HPP
 
 #include <functional>
+#include <memory>
 #include <random>
 #include <unordered_map>
 
 #include "Graph.hpp"
+#include "util.hpp"
+
+// Forward declare the viz namespace and its contents to avoid including pyViz.hpp here
+namespace viz {
+
+struct VizUpdate;
+using ThreadControlPtr = std::shared_ptr<util::ThreadControls<VizUpdate>>;
+}; // namespace viz
 
 namespace sim {
 
@@ -28,13 +37,11 @@ struct SolutionAlterations {
     }
 };
 
-typedef std::function<SolutionAlterations(Graph& graph, std::mt19937& generator,
+using MutationFunction = std::function<SolutionAlterations(Graph& graph, std::mt19937& generator,
     std::uniform_int_distribution<int>& srcVertexDistribution,
     std::uniform_int_distribution<int>& dstVertexDistribution,
-    std::uniform_real_distribution<double>& probabilityDistribution)>
-    MutationFunction;
-
-typedef std::function<void(Graph& graph, const SolutionAlterations& alterations)> RestoreFunction;
+    std::uniform_real_distribution<double>& probabilityDistribution)>;
+using RestoreFunction = std::function<void(Graph& graph, const SolutionAlterations& alterations)>;
 
 /**
  * @brief Simulates the annealing process on the provided graph using specified flags. It will
@@ -44,8 +51,8 @@ typedef std::function<void(Graph& graph, const SolutionAlterations& alterations)
  * @param flags A vector of strings representing various flags that deterimine what additional
  * features to use.
  */
-void simulateAnnealing(Graph& graph, const std::unordered_map<std::string, std::string>& flags,
-    util::PlotType plotType, MutationMethod method = NAIVE);
+void simulateAnnealing(Graph& graph, MutationMethod method = NAIVE, bool sendUpdates = false,
+    viz::ThreadControlPtr vizThreadControls = nullptr);
 
 /**
  * @brief Converts a mutation method into the corresponding string value
@@ -61,6 +68,15 @@ std::string mutationMethodToString(MutationMethod method);
  * @return The enum element
  */
 MutationMethod stringToMutationMethod(const std::string& methodStr);
+
+/* Debug section REMOVE THIS!!! */
+SolutionAlterations conwayNeighbor(Graph& graph, std::mt19937& generator,
+    std::uniform_int_distribution<int>& srcVertexDistribution,
+    std::uniform_int_distribution<int>& dstVertexDistribution,
+    std::uniform_real_distribution<double>& /*probabilityDistribution*/);
+
+void revertConway(Graph& graph, const SolutionAlterations& alterations);
+
 }; // namespace sim
 
 #endif // SIMULATE_ANNEALING_HPP

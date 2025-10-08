@@ -2,7 +2,11 @@
 #ifndef UTIL_HPP
 #define UTIL_HPP
 
+#include <atomic>
+#include <condition_variable>
 #include <filesystem>
+#include <mutex>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -57,10 +61,24 @@ struct Position {
 
     bool operator>(const Position& other) const { return other < *this; }
 
+    std::string toString() const
+    {
+        return "(" + std::to_string(row) + ", " + std::to_string(col) + ")";
+    }
+
     int distanceTo(const Position& other) const
     {
         return std::abs(row - other.row) + std::abs(col - other.col);
     }
+};
+
+template <typename MessageType> struct ThreadControls {
+    std::queue<MessageType> messageQueue;
+    std::mutex queueMutex;
+    std::condition_variable queueCondition;
+    std::atomic<bool> shouldStop { false };
+
+    ThreadControls() = default;
 };
 
 /**

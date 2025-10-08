@@ -1,4 +1,5 @@
 
+import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
@@ -7,10 +8,11 @@ class AnimatedGrid:
     Animated grid visualization for simulated annealing progress.
     """
 
-    def __init__(self, NROWS, NCOLS, title="Simulated Annealing Progress", use_color_map=False, num_nodes=1, close_callback=None):
+    def __init__(self, NROWS, NCOLS, title="Simulated Annealing Progress", use_color_map=False, num_nodes=1, figure=None, ax=None):
+        
         self.NROWS = NROWS
         self.NCOLS = NCOLS
-        self.fig, self.ax = plt.subplots(figsize=(10, 8))
+        self.fig, self.ax = (figure, ax) if (figure and ax) else plt.subplots(figsize=(10, 8))
         self.title = title
         self.use_color_map = use_color_map
         self.num_nodes = num_nodes
@@ -33,15 +35,7 @@ class AnimatedGrid:
         # Animation properties
         self.is_running = False
         self.animation_obj = None
-        
-        # Callback for when window is closed
-        self.close_callback = close_callback
-        self.is_active = True
-        if close_callback:
-            self.set_close_callback(close_callback)
 
-        # I'm untrusting right now
-        self._on_close(None)
 
     def setup_plot(self):
         """Initialize the plot with grid background."""
@@ -69,7 +63,7 @@ class AnimatedGrid:
         # Invert y-axis
         self.ax.invert_yaxis()
         
-    def update_positions(self, new_positions, new_indices=None, iteration=None, score=None, draw=True):
+    def update_positions(self, new_positions, new_indices=None, score=None, draw=True):
         """Update node positions and redraw."""
         # Clear existing nodes
         for circle in self.circles:
@@ -82,7 +76,7 @@ class AnimatedGrid:
         
         # Store new state
         self.current_positions = new_positions.copy()
-        self.sequence.append(new_positions.copy())
+        self.sequence.append((score, new_positions.copy()))
         self.current_indices = new_indices.copy() if new_indices else list(range(len(new_positions)))
         
         # Draw new nodes
@@ -92,8 +86,7 @@ class AnimatedGrid:
                 color = self.color_map(idx)
             else:
                 color = 'steelblue'
-            circle = plt.Circle((col, row), 0.3, color=color, 
-                                edgecolor='black', linewidth=1.5, zorder=3)
+            circle = plt.Circle((col, row), 0.3, color=color, linewidth=1.5, zorder=3)
             
             self.ax.add_patch(circle)
             self.circles.append(circle)
@@ -106,32 +99,15 @@ class AnimatedGrid:
         
         # Update title with iteration info
         title_text = self.title
-        if iteration is not None:
-            title_text += f" - Iteration: {iteration}"
         if score is not None:
             title_text += f" - Score: {score}"
         
         self.ax.set_title(title_text, pad=20)
 
         if draw:
-            # Force redraw
+            # Force redraw and process events
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()
-        
-    def set_close_callback(self, callback):
-        """
-        Set a callback function that will be called when the window is closed.
-        The callback should take no parameters and return nothing.
-        """
-        self.close_callback = callback
-        self.fig.canvas.mpl_connect('close_event', self._on_close)
-    
-    def _on_close(self, _):
-        """Internal method called when window is closed."""
-        self.is_running = False
-        self.is_active = False
-        if self.close_callback:
-            self.close_callback()
     
     def live_update_mode(self):
         """
@@ -139,17 +115,6 @@ class AnimatedGrid:
         Call update_positions() whenever you want to update the display.
         """
         plt.ion()  # Turn on interactive mode
-        plt.show()
-        self.is_running = True
-
-    def hold(self):
-        """Hold the animation open."""
-        plt.ioff()
-        plt.show(block=True)
-
-    def continue_anim(self):
-        """Continue the animation."""
-        plt.ion()
         self.is_running = True
 
     def close(self):
@@ -157,3 +122,49 @@ class AnimatedGrid:
         self.is_running = False
         plt.ioff()
         plt.close(self.fig)
+
+    def save_gif(self, filename="animation.gif", final_frame_hold_seconds=2., fps=10):
+
+        num_frames = len(self.sequence) + int(final_frame_hold_seconds * fps)
+        save_seq = self.sequence + [self.sequence[-1]] * int(final_frame_hold_seconds * fps)
+
+        # Create the animation callback function
+        def animate_frame(frame):
+            positions = save_seq[frame][1]
+            score = save_seq[frame][0]
+            self.update_positions(positions, None, score, draw=False)
+            return self.circles + self.texts
+
+        # Make a temporary figure to save the GIF
+        temp_fig, temp_ax = self.fig, self.ax
+        self.fig, self.ax = plt.subplots(figsize=(10, 8))
+        self.setup_plot()
+
+        # Create animation object
+        anim = animation.FuncAnimation(
+            self.fig, animate_frame, frames=num_frames,
+            interval=(num_frames*1000)/fps, blit=False, repeat=True
+        )
+
+        anim.save(filename=filename, writer='pillow', fps=fps)
+
+        # Restore original figure and axis
+        self.fig, self.ax = temp_fig, temp_ax
+        self.setup_plot()
+
+    def save_final_state(self, filename="final_state.png"):
+        
+        # Save the current figure and axis state so we can return to it
+        temp_fig, temp_ax = self.fig, self.ax
+
+        # Make a temporary figure to save the final state
+        self.fig, self.ax = plt.subplots(figsize=(10, 8))
+        self.setup_plot()
+
+        # Draw the current positions on the temporary figure
+        self.update_positions(self.current_positions, self.current_indices, score=self.sequence[-1][0], draw=False)
+        self.fig.savefig(filename)
+
+        # Restore original figure and axis
+        self.fig, self.ax = temp_fig, temp_ax
+        self.setup_plot()

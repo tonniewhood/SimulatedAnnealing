@@ -3,25 +3,21 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 class BasicDigraph:
-    def __init__(self, edges):
+    def __init__(self, edges, figure=None, ax=None):
         """
         Initialize the graph with a list of edges.
         Each edge should be a tuple (node1, node2).
         """
         self.graph = nx.Graph()
         self.graph.add_edges_from(edges)
+        self.fig, self.ax = figure, ax if figure and ax else plt.subplots(figsize=(10, 8))
+        self.displayed = False
 
     def display(self):
-        """
-        Display the graph using matplotlib.
-        """
-        # Create the plot
-        plt.figure(figsize=(10, 8))
+
+        if self.displayed:
+            return
         
-        # Position nodes using pygraphviz layouts (much better for automatic layout)
-        # Try different layout algorithms:
-        
-        # Option 1: 'dot' - Hierarchical layout (best for directed graphs)
         pos = nx.nx_agraph.graphviz_layout(self.graph, prog='dot')
         
         # Draw the graph
@@ -42,18 +38,18 @@ class BasicDigraph:
                             width=2)
         
         # Add title and clean up the plot
-        plt.title("Basic Directed Graph\n0→2, 1→2, 2→3, 3→4, 3→5", fontsize=14, pad=20)
-        plt.axis('off')  # Remove axes
-        
+        self.ax.set_title("Basic Directed Graph\n0→2, 1→2, 2→3, 3→4, 3→5", fontsize=14, pad=20)
+        self.ax.axis('off')  # Remove axes
+
         # Show the graph and keep it open
-        plt.tight_layout()
-        plt.show(block=True)
+        self.fig.tight_layout()
+
+        self.displayed = True
 
     def save(self, filename="basic_digraph.png"):
         """
         Save the graph to a file.
         """
-        plt.figure(figsize=(10, 8))
         
         pos = nx.nx_agraph.graphviz_layout(self.graph, prog='dot')
         
@@ -72,11 +68,9 @@ class BasicDigraph:
                             arrowsize=20, 
                             arrowstyle='->', 
                             width=2)
-        
-        plt.title("Basic Directed Graph\n0→2, 1→2, 2→3, 3→4, 3→5", fontsize=14, pad=20)
-        plt.axis('off')
-        
-        plt.tight_layout()
-        plt.savefig(filename)
-        print(f"Graph saved as '{filename}'")
-        plt.close()
+
+        self.ax.set_title("Basic Directed Graph\n0→2, 1→2, 2→3, 3→4, 3→5", fontsize=14, pad=20)
+        self.ax.axis('off')
+
+        self.fig.tight_layout()
+        self.fig.savefig(filename, bbox_inches=self.ax.get_tightbbox(self.fig.canvas.get_renderer()).transformed(self.fig.dpi_scale_trans.inverted()))

@@ -88,6 +88,10 @@ public:
     std::vector<util::Position>& getVertexPositionsRef() { return this->vertexPositions; }
     std::vector<util::Position>& getPaddingPositionsRef() { return this->paddedPositions; }
 
+    // DEBUG
+    std::set<util::Position> getOccupiedCells() const { return this->occupiedCells; }
+    std::set<util::Position> getPaddedCells() const { return this->paddedCells; }
+
 private:
     /**
      * @brief Validates and extracts the header information from the input file.

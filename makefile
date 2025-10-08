@@ -106,10 +106,21 @@ endif
 INPUT           ?= input.txt
 OUTPUT          ?= output.txt
 MUTATION_METHOD ?= naive
-PLOT_TYPE       ?= --plot-type=graph
-# STATISTICS      ?= --statistics=true
-STATISTICS      ?= 
-FLAGS           ?= "--mutation-method="$(MUTATION_METHOD) $(PLOT_TYPE) $(STATISTICS)
+PLOT_TYPE       ?= graph
+SAVE_FIGS       ?= false
+FIGURE_PATH     ?= $(PROJECT_ROOT)/
+STATISTICS      ?= false
+MUTATION_FLAG   ?= --mutation-method=$(MUTATION_METHOD)
+PLOT_FLAG       ?= --plot-type=$(PLOT_TYPE)
+SAVE_FLAG       ?= --save-figures=$(SAVE_FIGS)
+FIGURE_FLAG     ?= --figure-path=$(FIGURE_PATH)
+STATISTICS_FLAG ?= --statistics=$(STATISTICS)
+FLAGS ?= \
+	$(if $(MUTATION_METHOD),$(MUTATION_FLAG),) \
+	$(if $(PLOT_TYPE),$(PLOT_FLAG),) \
+	$(if $(STATISTICS),$(STATISTICS_FLAG),) \
+	$(if $(SAVE_FIGS),$(SAVE_FLAG),) \
+	$(if $(FIGURE_PATH),$(FIGURE_FLAG),)
 ARGS            ?= $(INPUT) $(OUTPUT) $(FLAGS)
 
 run: all

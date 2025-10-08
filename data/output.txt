@@ -1,67 +1,67 @@
 For grid dimensions 10 x 10 with 31 vertices:
 Graph layout:
-Final score: 54
+Final score: 45
 [positions in (row, col) format]
 ===========================
-Node 0 placed at (0, 2)
-Node 1 placed at (0, 0)
-Node 2 placed at (2, 0)
-Node 3 placed at (3, 0)
-Node 4 placed at (0, 4)
-Node 5 placed at (0, 3)
-Node 6 placed at (2, 1)
-Node 7 placed at (2, 3)
-Node 8 placed at (2, 7)
-Node 9 placed at (2, 9)
-Node 10 placed at (0, 9)
-Node 11 placed at (1, 9)
-Node 12 placed at (2, 4)
-Node 13 placed at (2, 6)
-Node 14 placed at (0, 7)
-Node 15 placed at (0, 5)
-Node 16 placed at (0, 1)
-Node 17 placed at (1, 0)
-Node 18 placed at (1, 4)
-Node 19 placed at (2, 2)
-Node 20 placed at (2, 8)
-Node 21 placed at (0, 8)
-Node 22 placed at (2, 5)
-Node 23 placed at (0, 6)
-Node 24 placed at (1, 1)
-Node 25 placed at (1, 2)
-Node 26 placed at (1, 8)
-Node 27 placed at (1, 6)
-Node 28 placed at (1, 3)
-Node 29 placed at (1, 7)
-Node 30 placed at (1, 5)
+Node 0 placed at (5, 7)
+Node 1 placed at (5, 5)
+Node 2 placed at (4, 8)
+Node 3 placed at (3, 7)
+Node 4 placed at (1, 8)
+Node 5 placed at (1, 6)
+Node 6 placed at (3, 8)
+Node 7 placed at (2, 9)
+Node 8 placed at (5, 4)
+Node 9 placed at (4, 5)
+Node 10 placed at (0, 5)
+Node 11 placed at (1, 5)
+Node 12 placed at (1, 3)
+Node 13 placed at (2, 2)
+Node 14 placed at (3, 2)
+Node 15 placed at (4, 1)
+Node 16 placed at (5, 6)
+Node 17 placed at (4, 7)
+Node 18 placed at (1, 7)
+Node 19 placed at (2, 8)
+Node 20 placed at (4, 4)
+Node 21 placed at (2, 5)
+Node 22 placed at (2, 3)
+Node 23 placed at (4, 2)
+Node 24 placed at (4, 6)
+Node 25 placed at (2, 7)
+Node 26 placed at (3, 4)
+Node 27 placed at (4, 3)
+Node 28 placed at (3, 6)
+Node 29 placed at (3, 3)
+Node 30 placed at (3, 5)
 ---------------------------
 Edge (0 -> 16) with distance 1
 Edge (1 -> 16) with distance 1
 Edge (2 -> 17) with distance 1
-Edge (3 -> 17) with distance 2
+Edge (3 -> 17) with distance 1
 Edge (4 -> 18) with distance 1
-Edge (5 -> 18) with distance 2
+Edge (5 -> 18) with distance 1
 Edge (6 -> 19) with distance 1
 Edge (7 -> 19) with distance 1
 Edge (8 -> 20) with distance 1
 Edge (9 -> 20) with distance 1
-Edge (10 -> 21) with distance 1
-Edge (11 -> 21) with distance 2
+Edge (10 -> 21) with distance 2
+Edge (11 -> 21) with distance 1
 Edge (12 -> 22) with distance 1
 Edge (13 -> 22) with distance 1
 Edge (14 -> 23) with distance 1
 Edge (15 -> 23) with distance 1
 Edge (16 -> 24) with distance 1
 Edge (17 -> 24) with distance 1
-Edge (18 -> 25) with distance 2
+Edge (18 -> 25) with distance 1
 Edge (19 -> 25) with distance 1
 Edge (20 -> 26) with distance 1
-Edge (21 -> 26) with distance 1
+Edge (21 -> 26) with distance 2
 Edge (22 -> 27) with distance 2
 Edge (23 -> 27) with distance 1
-Edge (24 -> 28) with distance 2
-Edge (25 -> 28) with distance 1
+Edge (24 -> 28) with distance 1
+Edge (25 -> 28) with distance 2
 Edge (26 -> 29) with distance 1
 Edge (27 -> 29) with distance 1
-Edge (28 -> 30) with distance 2
+Edge (28 -> 30) with distance 1
 Edge (29 -> 30) with distance 2

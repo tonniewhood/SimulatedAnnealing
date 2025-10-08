@@ -206,6 +206,24 @@ util::Position Graph::getVertexPosition(int vertex) const
     return this->vertexPositions[vertex];
 }
 
+static inline bool in_bounds(const util::Position& pos, const util::GridDimensions& dims)
+{
+    return pos.row >= 0 && pos.row < dims.height && pos.col >= 0 && pos.col < dims.width;
+}
+
+static inline void erase_all(std::vector<util::Position>& vec, const util::Position& value)
+{
+    vec.erase(std::remove(vec.begin(), vec.end(), value), vec.end());
+}
+
+static inline void safe_push_back(std::vector<util::Position>& vec, const util::Position& value)
+{
+    auto iter = std::find(vec.begin(), vec.end(), value);
+    if (iter == vec.end()) {
+        vec.push_back(value);
+    }
+}
+
 /**
  * @brief Updates the padded pixels after a swap has been made.
  * @param vacatedPos The position that was vacated by the swap
@@ -213,54 +231,62 @@ util::Position Graph::getVertexPosition(int vertex) const
  */
 void Graph::updatePadding(util::Position vacatedPos, util::Position filledPos)
 {
-    std::vector<util::Position> oldAdjacentPositions
-        = { util::Position(vacatedPos.row - 1, vacatedPos.col),
-              util::Position(vacatedPos.row + 1, vacatedPos.col),
-              util::Position(vacatedPos.row, vacatedPos.col - 1),
-              util::Position(vacatedPos.row, vacatedPos.col + 1) };
+    auto adjacentCells = [](const util::Position& pos) {
+        return std::vector<util::Position> { util::Position(pos.row - 1, pos.col),
+            util::Position(pos.row + 1, pos.col), util::Position(pos.row, pos.col - 1),
+            util::Position(pos.row, pos.col + 1) };
+    };
 
-    std::vector<util::Position> newAdjacentPositions
-        = { util::Position(filledPos.row - 1, filledPos.col),
-              util::Position(filledPos.row + 1, filledPos.col),
-              util::Position(filledPos.row, filledPos.col - 1),
-              util::Position(filledPos.row, filledPos.col + 1) };
-
-    // Remove the old source from the occupied cells
+    // Remove the old source from the occupied cells and add the new one
     this->occupiedCells.erase(vacatedPos);
     this->occupiedCells.insert(filledPos);
 
+    // Remove the filled position from the padded cells
+    this->paddedCells.erase(filledPos);
+    erase_all(this->paddedPositions, filledPos);
+
     // Ensure all adjacent positions by the old position have the right status
-    for (const auto& pos : oldAdjacentPositions) {
-        // If the position is known to be occupied, just move on
-        if (this->occupiedCells.find(pos) != this->occupiedCells.end())
+    bool hasOccupiedNeighbor = false;
+    for (const auto& pos : adjacentCells(vacatedPos)) {
+
+        // Verify the position is within bounds and is padded
+        if (!in_bounds(pos, this->gridDimensions))
             continue;
 
-        // Check the surrounding vertices for being in the occupied positions
-        std::vector<util::Position> surroundingPositions
-            = { util::Position(pos.row - 1, pos.col), util::Position(pos.row + 1, pos.col),
-                  util::Position(pos.row, pos.col - 1), util::Position(pos.row, pos.col + 1) };
-        bool hasOccupied = false;
-        for (const auto& surroundingPos : surroundingPositions) {
-            hasOccupied = hasOccupied
-                || this->occupiedCells.find(surroundingPos) != this->occupiedCells.end();
+        hasOccupiedNeighbor = hasOccupiedNeighbor || this->occupiedCells.count(pos);
+        if (!this->paddedCells.count(pos) || this->occupiedCells.count(pos))
+            continue;
+
+        bool neighborHasOccupiedNeighbor = false;
+        for (const auto& adj : adjacentCells(pos)) {
+            if (!in_bounds(adj, this->gridDimensions))
+                continue;
+            if (this->occupiedCells.count(adj)) {
+                neighborHasOccupiedNeighbor = true;
+                break;
+            }
         }
 
-        if (hasOccupied)
-            break;
-
-        // If there aren't any occupied cells around this position, it should be removed from the
-        // padded cells
-        this->paddedCells.erase(pos);
-        // And we need to remove it from the padded positions vector
-        auto iter = std::find(this->paddedPositions.begin(), this->paddedPositions.end(), pos);
-        if (iter != this->paddedPositions.end()) {
-            this->paddedPositions.erase(iter);
+        if (!neighborHasOccupiedNeighbor) {
+            // If none of the neighbors are occupied, this position should be removed from padding
+            this->paddedCells.erase(pos);
+            erase_all(this->paddedPositions, pos);
         }
+    }
+
+    if (hasOccupiedNeighbor) {
+        // If the vacated position has any occupied neighbors, it should be padded
+        this->paddedCells.insert(vacatedPos);
+        safe_push_back(this->paddedPositions, vacatedPos);
+    } else {
+        // If the vacated position has no occupied neighbors, it should not be padded
+        this->paddedCells.erase(vacatedPos);
+        erase_all(this->paddedPositions, vacatedPos);
     }
 
     // Now, add the cells surrounding the new filled position to the padded cells if they're not
     // occupied or already there
-    for (const auto& pos : newAdjacentPositions) {
+    for (const auto& pos : adjacentCells(filledPos)) {
         // If the position is known to be occupied, just move on
         if (this->occupiedCells.find(pos) != this->occupiedCells.end())
             continue;
@@ -275,9 +301,8 @@ void Graph::updatePadding(util::Position vacatedPos, util::Position filledPos)
         if (!cellInBounds)
             continue;
 
-        // If we reach here, the position is valid to be added as a padded cell
         this->paddedCells.insert(pos);
-        this->paddedPositions.push_back(pos);
+        safe_push_back(this->paddedPositions, pos);
     }
 }
 

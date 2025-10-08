@@ -14,12 +14,12 @@
 #include "util.hpp"
 
 #define INITIAL_TEMPERATURE 10000000.0f
-#define COOLING_RATE 0.9999f
+#define COOLING_RATE 0.99999f
 #define THRESHOLD_TEMPERATURE 1.0f
 
 using steadyClock = std::chrono::steady_clock;
 using namespace std::chrono_literals;
-constexpr double target_fps = 30.0;
+constexpr double target_fps = 10.0;
 constexpr auto frame_dt = 1.0s / target_fps;
 
 namespace sim {
@@ -112,10 +112,10 @@ void revertNaive(Graph& graph, const SolutionAlterations& alterations)
 SolutionAlterations conwayNeighbor(Graph& graph, std::mt19937& generator,
     std::uniform_int_distribution<int>& srcVertexDistribution,
     std::uniform_int_distribution<int>& dstVertexDistribution,
-    std::uniform_real_distribution<double>& /*probabilityDistribution*/)
+    std::uniform_real_distribution<double>& probabilityDistribution)
 {
     // Resize the distributions if neccessary
-    if (dstVertexDistribution.max() != graph.getNumVertices() + graph.getNumPaddedPositions() - 1) {
+    if (dstVertexDistribution.max() != graph.getNumVertices() + graph.getNumPaddedPositions() - 2) {
         // Update the distributions to account for padded positions
         int totalPositions = graph.getNumVertices() + graph.getNumPaddedPositions();
         dstVertexDistribution.param(
@@ -134,15 +134,29 @@ SolutionAlterations conwayNeighbor(Graph& graph, std::mt19937& generator,
 
     util::Position srcPos = positions[srcVertex];
     util::Position dstPos;
-    if (dstVertex >= graph.getNumVertices() - 2) {
-        int padIdx = dstVertex - graph.getNumVertices();
-        dstPos = padding[padIdx];
-        positions[srcVertex] = dstPos;
-        graph.updatePadding(srcPos, dstPos);
-        dstVertex = -1;
-    } else {
-        std::swap(positions[srcVertex], positions[dstVertex]);
+    if (dstVertex >= graph.getNumVertices()) {
+        double swapProb = probabilityDistribution(generator);
+        double ratio = static_cast<double>(graph.getNumVertices())
+            / static_cast<double>(graph.getNumPaddedPositions());
+        double swapThreshold = 0.5 * ((ratio <= 0.25) ? 1.0 : (0.25 / ratio));
+
+        // If we have a high enough probability, we swap with the padded position
+        if (swapProb < swapThreshold) {
+            int padIdx = dstVertex - graph.getNumVertices();
+            dstPos = padding[padIdx];
+            positions[srcVertex] = dstPos;
+            graph.updatePadding(srcPos, dstPos);
+
+            return SolutionAlterations(srcVertex, -1, srcPos, dstPos);
+        }
+
+        // If we didn't swap with a padded position, we can just return the src vertex and position
+        // for both
+        return SolutionAlterations(srcVertex, srcVertex, srcPos, srcPos);
     }
+
+    dstPos = positions[dstVertex];
+    std::swap(positions[srcVertex], positions[dstVertex]);
 
     return SolutionAlterations(srcVertex, dstVertex, srcPos, dstPos);
 }
@@ -173,8 +187,8 @@ void revertConway(Graph& graph, const SolutionAlterations& alterations)
  * @param flags A vector of strings representing various flags that determine what additional
  * features to use.
  */
-void simulateAnnealing(Graph& graph, const std::unordered_map<std::string, std::string>& flags,
-    util::PlotType plotType, MutationMethod method)
+void simulateAnnealing(
+    Graph& graph, MutationMethod method, bool sendUpdates, viz::ThreadControlPtr vizThreadControls)
 {
     /*
     Pseudocode for Simulated Annealing:
@@ -230,12 +244,8 @@ void simulateAnnealing(Graph& graph, const std::unordered_map<std::string, std::
 
     // Get an initial solution (it'll just be sequential placement on the grid for now)
     graph.initializeVertexPositions();
-    int lastUsedDistance = graph.scoreGraphLayout();
 
-    // Show initial state immediately
-    if (plotType & util::GRID_MASK) {
-        viz::updateVisualization(graph.getConstVertexPositions(), 0, lastUsedDistance);
-    }
+    int lastUsedDistance = graph.scoreGraphLayout();
 
     // Use this to track the best positions found so far to make sure we're not potentially
     // losing a better position when the randomness of the algorithm kicks in
@@ -252,7 +262,7 @@ void simulateAnnealing(Graph& graph, const std::unordered_map<std::string, std::
         if (newDistance < lastUsedDistance) {
             lastUsedDistance = newDistance;
             // We only save the best positions if we've actually improved
-            if (lastUsedDistance > lastBestDistance) {
+            if (lastUsedDistance < lastBestDistance) {
                 lastBestPositions = graph.getCopyVertexPositions();
                 lastBestDistance = lastUsedDistance;
             }
@@ -275,24 +285,21 @@ void simulateAnnealing(Graph& graph, const std::unordered_map<std::string, std::
             }
         }
 
-        // Potentially visualize the current state of the graph
-        if (plotType & util::GRID_MASK) {
-            auto now = steadyClock::now();
-            if (now >= next_frame) {
-                viz::updateVisualization(
-                    graph.getConstVertexPositions(), iteration, lastUsedDistance);
+        if (sendUpdates && vizThreadControls && steadyClock::now() >= next_frame) {
+            // If we have visualization controls, send an update
+            viz::VizUpdate update;
+            update.score = lastUsedDistance;
+            update.positions = graph.getCopyVertexPositions();
 
-                // Calculate next frame time, handle potential frame skipping
-                while (next_frame <= now) {
-                    next_frame += frame_dt;
-                }
+            {
+                while (!vizThreadControls->queueMutex.try_lock())
+                    std::this_thread::sleep_for(1ms);
+                vizThreadControls->messageQueue.push(update);
+                vizThreadControls->queueMutex.unlock();
             }
-        }
+            vizThreadControls->queueCondition.notify_one();
 
-        if (plotType & util::STATS_MASK) {
-            if (iteration == 0) {
-                std::cout << "Not yet implemented" << std::endl;
-            }
+            next_frame += frame_dt;
         }
 
         temperature *= COOLING_RATE; // Cool down the system
@@ -301,14 +308,24 @@ void simulateAnnealing(Graph& graph, const std::unordered_map<std::string, std::
     // At the end, make sure we have the best positions found during the entire process
     graph.getVertexPositionsRef() = lastBestPositions;
 
-    if (plotType & util::GRID_MASK) {
-        viz::updateVisualization(graph.getConstVertexPositions(), iteration, lastUsedDistance);
-        while (viz::isActive()) {
-            std::this_thread::sleep_for(100ms);
-        }
-    }
-
     std::cout << "Completed Simulated Annealing" << std::endl;
     std::cout << "Run " << iteration << " iterations." << std::endl;
+
+    // Send the final state, and then let the user close the viz windows
+    if (sendUpdates) {
+        viz::VizUpdate update;
+        update.score = lastUsedDistance;
+        update.positions = graph.getCopyVertexPositions();
+
+        {
+            while (!vizThreadControls->queueMutex.try_lock())
+                std::this_thread::sleep_for(1ms);
+            vizThreadControls->messageQueue.push(update);
+            vizThreadControls->queueMutex.unlock();
+        }
+        vizThreadControls->queueCondition.notify_one();
+
+        std::cout << "Close the visualization windows to exit." << std::endl;
+    }
 }
 }; // namespace sim
