@@ -254,6 +254,16 @@ void simulateAnnealing(
     double temperature = INITIAL_TEMPERATURE;
     int iteration = 0;
     while (temperature > THRESHOLD_TEMPERATURE) {
+
+        if (vizThreadControls) {
+            if (vizThreadControls->shouldStop.load()) {
+                std::cout << "Annealing process received stop signal, terminating early."
+                          << std::endl;
+                vizThreadControls->stoppedEarly.store(true);
+                return;
+            }
+        }
+
         // Generate a new solution by randomly swapping two vertex positions
         SolutionAlterations alterations = mutationMethod(graph, generator, srcVertexDistribution,
             dstVertexDistribution, probabilityDistribution);
@@ -292,10 +302,8 @@ void simulateAnnealing(
             update.positions = graph.getCopyVertexPositions();
 
             {
-                while (!vizThreadControls->queueMutex.try_lock())
-                    std::this_thread::sleep_for(1ms);
+                std::unique_lock<std::mutex> lock(vizThreadControls->queueMutex);
                 vizThreadControls->messageQueue.push(update);
-                vizThreadControls->queueMutex.unlock();
             }
             vizThreadControls->queueCondition.notify_one();
 
@@ -318,10 +326,8 @@ void simulateAnnealing(
         update.positions = graph.getCopyVertexPositions();
 
         {
-            while (!vizThreadControls->queueMutex.try_lock())
-                std::this_thread::sleep_for(1ms);
+            std::unique_lock<std::mutex> lock(vizThreadControls->queueMutex);
             vizThreadControls->messageQueue.push(update);
-            vizThreadControls->queueMutex.unlock();
         }
         vizThreadControls->queueCondition.notify_one();
 

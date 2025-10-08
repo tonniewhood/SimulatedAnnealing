@@ -89,8 +89,7 @@ class Viz:
         plt.pause(pause_time)
         plt.show(block=False)
 
-    def on_close(self, event):
-        print("Visualization window closed.")
+    def on_close(self, _):
         if self.close_callback:
             self.close_callback()
         self.shutdown_requested = True

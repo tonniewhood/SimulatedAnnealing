@@ -413,8 +413,7 @@ void PyVisualizer::saveFigures(const std::string& gridAnimationFilename,
 void PyVisualizer::onWindowCloseCallback()
 {
     {
-        while (!this->threadControls->queueMutex.try_lock())
-            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        std::unique_lock<std::mutex> lock(this->threadControls->queueMutex);
         this->threadControls->shouldStop.store(true);
     }
     this->threadControls->queueCondition.notify_all();
@@ -491,7 +490,7 @@ void visualizationLoop(PyVisualizer& viz)
 
     while (!viz.threadControls->shouldStop.load()) {
 
-        std::vector<VizUpdate> updates;
+        VizUpdate update;
 
         {
             std::unique_lock<std::mutex> lock(viz.threadControls->queueMutex);
@@ -505,11 +504,9 @@ void visualizationLoop(PyVisualizer& viz)
             if (viz.threadControls->shouldStop.load() && viz.threadControls->messageQueue.empty())
                 break;
 
-            updates.reserve(viz.threadControls->messageQueue.size());
-
             // Process all queued updates
-            while (!viz.threadControls->messageQueue.empty()) {
-                updates.push_back(std::move(viz.threadControls->messageQueue.front()));
+            if (!viz.threadControls->messageQueue.empty()) {
+                update = std::move(viz.threadControls->messageQueue.front());
                 viz.threadControls->messageQueue.pop();
             }
         }
@@ -518,9 +515,13 @@ void visualizationLoop(PyVisualizer& viz)
         viz.keepAlive(0.01);
 
         // Process updates outside the lock
-        for (const auto& update : updates) {
-            viz.updateViz(update.positions, update.score);
-        }
+        viz.updateViz(update.positions, update.score);
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(viz.threadControls->queueMutex);
+        std::queue<VizUpdate> empty;
+        std::swap(viz.threadControls->messageQueue, empty);
     }
 }
 

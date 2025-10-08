@@ -66,6 +66,8 @@ int main(int argc, char* argv[])
         std::cout << "No mutation method specified. Defaulting to NAIVE." << std::endl;
     }
 
+#if HAVE_PYTHON
+
     util::PlotType plotType = util::NONE;
     if (args.flagMap.find("--plot-type") != args.flagMap.end()) {
         std::string plotTypeStr = args.flagMap.at("--plot-type");
@@ -77,8 +79,6 @@ int main(int argc, char* argv[])
             std::cout << "Using plot type: " << plotTypeStr << std::endl;
         }
     }
-
-#if HAVE_PYTHON
 
     if (plotType & util::ALL_MASK) {
 
@@ -107,29 +107,31 @@ int main(int argc, char* argv[])
             // Start the visualization loop in the main thread
             viz::visualizationLoop(viz);
 
-            // Ensure the annealing thread has finished before proceeding
-            while (!viz.threadControls->shouldStop.load()) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-
+            while (!annealThread.joinable())
+                ;
             annealThread.join();
 
-            if (args.flagMap.find("--save-figures") != args.flagMap.end()) {
+            if (!viz.threadControls->stoppedEarly.load()) {
+                if (args.flagMap.find("--save-figures") != args.flagMap.end()) {
 
-                // Get the save figures flag and check if it's true
-                std::string saveFigures = args.flagMap.at("--save-figures");
-                if (util::toLower(saveFigures) == "true") {
+                    // Get the save figures flag and check if it's true
+                    std::string saveFigures = args.flagMap.at("--save-figures");
+                    if (util::toLower(saveFigures) == "true") {
 
-                    // If it is, check for the figure-path flag
-                    std::string figurePath = "./";
-                    if (args.flagMap.find("--figure-path") != args.flagMap.end()) {
-                        figurePath = args.flagMap.at("--figure-path");
+                        // If it is, check for the figure-path flag
+                        std::string figurePath = "./";
+                        if (args.flagMap.find("--figure-path") != args.flagMap.end()) {
+                            figurePath = args.flagMap.at("--figure-path");
+                        }
+
+                        std::cout << "Saving figures to: " << figurePath << std::endl;
+                        viz.saveFigures(figurePath + "grid.gif", figurePath + "grid.png",
+                            figurePath + "graph.png", figurePath + "stats.png");
                     }
-
-                    std::cout << "Saving figures to: " << figurePath << std::endl;
-                    viz.saveFigures(figurePath + "grid.gif", figurePath + "grid.png",
-                        figurePath + "graph.png", figurePath + "stats.png");
                 }
+            } else {
+                std::cout << "Annealing process terminated early, skipping figure save."
+                          << std::endl;
             }
 
             viz.shutdown();

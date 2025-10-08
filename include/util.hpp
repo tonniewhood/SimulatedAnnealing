@@ -77,6 +77,7 @@ template <typename MessageType> struct ThreadControls {
     std::mutex queueMutex;
     std::condition_variable queueCondition;
     std::atomic<bool> shouldStop { false };
+    std::atomic<bool> stoppedEarly { false };
 
     ThreadControls() = default;
 };
