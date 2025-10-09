@@ -48,6 +48,7 @@ For this project, the following flags were used to build:
 * `-Wall`
 * `-Wextra`
 * `-g -O0` or `-O3` (dependant on debug or release)
+* `-std=c++17`
 
 Additionally, if using MSVC, the command needs to be adjusted. This should be the command:
 

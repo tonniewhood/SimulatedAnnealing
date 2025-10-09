@@ -65,8 +65,9 @@ MutationMethod stringToMutationMethod(const std::string& methodStr);
  * @param graph The graph to perform simulated annealing on.
  * @param flags A vector of strings representing various flags that deterimine what additional
  * features to use.
+ * @return The minimum score achieved by the annealing process.
  */
-void simulateAnnealing(Graph& graph, double startTemperature, double coolingRate, MutationMethod method = NAIVE,
+int simulateAnnealing(Graph& graph, double startTemperature, double coolingRate, MutationMethod method = NAIVE,
     bool sendUpdates = false, viz::ThreadControlPtr vizThreadControls = nullptr);
 
 #else
@@ -78,10 +79,26 @@ void simulateAnnealing(Graph& graph, double startTemperature, double coolingRate
  * @param graph The graph to perform simulated annealing on.
  * @param flags A vector of strings representing various flags that deterimine what additional
  * features to use.
+ * @return The minimum score achieved by the annealing process.
  */
-void simulateAnnealing(Graph& graph, double startTemperature, double coolingRate, MutationMethod method = NAIVE);
+int simulateAnnealing(Graph& graph, double startTemperature, double coolingRate, MutationMethod method = NAIVE);
 
 #endif // HAVE_PYTHON
+
+/**
+ * @brief Runs an indepth analysis on the annealing process, specifcically how the cooling rate
+ * affects the final score and time to completion. This will run multiple trials at each
+ * cooling rate and record the results. The idea is to also run each of the methods and compare
+ * them.
+ * @param graph The graph to perform simulated annealing on.
+ * @param startingTemperature The starting temperature for the annealing process.
+ * @param coolingRates A vector of cooling rates to test.
+ * @param numTrials The number of trials to run for each cooling rate.
+ * @param outputFilePath The path to the output file where results will be saved.
+ * @return The integer exit code. 0 for success, non-zero for failure.
+ */
+int runAnnealingAnalysis(Graph& graph, double startingTemperature, const std::vector<double>& coolingRates,
+    int numTrials, const std::filesystem::path& outputFileDirectory);
 
 }; // namespace sim
 

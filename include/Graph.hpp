@@ -144,7 +144,13 @@ public:
      * information to include in the report.
      * @return bool indicating success or failure of the report operation.
      */
-    bool reportResults(const std::unordered_map<std::string, std::string>& flags) const;
+    bool reportResults() const;
+
+    /**
+     * @brief Resets the graph to its initial state, clearing all vertex positions and padded
+     * positions.
+     */
+    void resetGraph();
 
     /* Getters for various member variables */
     util::GridDimensions getGridDimensions() const { return this->gridDimensions; }

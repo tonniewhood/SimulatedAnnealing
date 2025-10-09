@@ -48,11 +48,27 @@ int main(int argc, char* argv[])
         outputFilePath = std::filesystem::path("output.txt");
     }
 
-    std::cout << "Using input file: " << inputFilePath << std::endl;
-    std::cout << "Using output file: " << outputFilePath << std::endl;
+    std::cout << "\n=== Lab04 Simulated Annealing ===\n" << std::endl;
+    std::cout << "Configuration:" << std::endl;
+    std::cout << "  Input file:  " << inputFilePath << std::endl;
+    std::cout << "  Output file: " << outputFilePath << std::endl;
+    std::cout << "  Initial temperature: " << INITIAL_TEMPERATURE << std::endl;
+    std::cout << "  Cooling rate: " << COOLING_RATE << std::endl;
 
     Graph graph(inputFilePath, outputFilePath);
     graph.readInputFile();
+
+    if (args.flagMap.find("--run-analysis") != args.flagMap.end()) {
+        std::string runAnalysis = args.flagMap.at("--run-analysis");
+        if (util::toLower(runAnalysis) == "true") {
+            std::cout << "\n--- Running Annealing Analysis ---" << std::endl;
+            std::cout << "Note: This may take several minutes to complete...\n" << std::endl;
+            std::vector<double> coolingRates = { 0.9, 0.95, 0.99, 0.995, 0.999, 0.9995, 0.9999, 0.99995, 0.99999 };
+            std::filesystem::path analysisDir = inputFilePath.parent_path();
+            return sim::runAnnealingAnalysis(graph, INITIAL_TEMPERATURE, coolingRates, 10, analysisDir);
+        }
+    }
+
     sim::MutationMethod method = sim::NAIVE;
 
     if (args.flagMap.find("--mutation-method") != args.flagMap.end()) {
@@ -61,9 +77,12 @@ int main(int argc, char* argv[])
         if (method == sim::UNDEFINED) {
             std::cerr << "Warning: Undefined mutation method '" << methodStr << "'. Defaulting to NAIVE." << std::endl;
             method = sim::NAIVE;
+            std::cout << "  Mutation method: NAIVE (fallback)" << std::endl;
+        } else {
+            std::cout << "  Mutation method: " << methodStr << std::endl;
         }
     } else {
-        std::cout << "No mutation method specified. Defaulting to NAIVE." << std::endl;
+        std::cout << "  Mutation method: NAIVE (default)" << std::endl;
     }
 
 #if HAVE_PYTHON
@@ -75,12 +94,15 @@ int main(int argc, char* argv[])
         if (plotType == util::NONE) {
             std::cerr << "Warning: Undefined plot type '" << plotTypeStr << "'. No visualization will be used."
                       << std::endl;
+            std::cout << "  Visualization: None" << std::endl;
         } else {
-            std::cout << "Using plot type: " << plotTypeStr << std::endl;
+            std::cout << "  Visualization: " << plotTypeStr << std::endl;
         }
     }
 
     if (plotType & util::ALL_MASK) {
+        std::cout << "\n--- Starting Simulation ---" << std::endl;
+        std::cout << "Initializing visualization..." << std::endl;
 
         viz::PyVisualizer viz(graph.getGridWidth(), graph.getGridHeight(), graph.getNumVertices(), graph.getOffsets(),
             graph.getNeighbors(), plotType);
@@ -124,7 +146,8 @@ int main(int argc, char* argv[])
                             figurePath = args.flagMap.at("--figure-path");
                         }
 
-                        std::cout << "Saving figures to: " << figurePath << std::endl;
+                        std::cout << "\n--- Saving Visualization Results ---" << std::endl;
+                        std::cout << "Output directory: " << figurePath << std::endl;
 
                         std::string timeStr = util::getCurrentTimeFormatted();
 
@@ -148,28 +171,32 @@ int main(int argc, char* argv[])
                     }
                 }
             } else {
-                std::cout << "Annealing process terminated early, skipping figure save." << std::endl;
+                std::cout << "\nProcess terminated early by user - skipping figure save." << std::endl;
             }
 
             viz.shutdown();
         }
     } else {
+        std::cout << "\n--- Starting Simulation ---" << std::endl;
+        std::cout << "Running without visualization..." << std::endl;
         sim::simulateAnnealing(graph, INITIAL_TEMPERATURE, COOLING_RATE, method);
     }
 
 #else
 
-    std::cout << "Compiled without Python support, skipping visualization regardless of flags." << std::endl;
+    std::cout << "  Visualization: None (compiled without Python support)" << std::endl;
+    std::cout << "\n--- Starting Simulation ---" << std::endl;
+    std::cout << "Running without visualization..." << std::endl;
     sim::simulateAnnealing(graph, INITIAL_TEMPERATURE, COOLING_RATE, method);
 
 #endif // HAVE_PYTHON
 
-    if (!graph.reportResults(args.flagMap)) {
+    if (!graph.reportResults()) {
         std::cerr << "Error: Failed to report results." << std::endl;
         return 1;
     }
 
-    std::cout << "Program completed successfully." << std::endl;
+    std::cout << "Results have been written to: " << outputFilePath << "\n" << std::endl;
 
     return 0;
 }
