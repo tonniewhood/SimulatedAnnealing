@@ -125,8 +125,26 @@ int main(int argc, char* argv[])
                         }
 
                         std::cout << "Saving figures to: " << figurePath << std::endl;
-                        viz.saveFigures(figurePath + "grid.gif", figurePath + "grid.png", figurePath + "graph.png",
-                            figurePath + "stats.png");
+
+                        std::string timeStr = util::getCurrentTimeFormatted();
+
+                        std::string grid_gif
+                            = figurePath + sim::mutationMethodToString(method) + "_grid_" + timeStr + ".gif";
+                        std::string grid_png
+                            = figurePath + sim::mutationMethodToString(method) + "_grid_" + timeStr + ".png";
+                        std::string graph_png
+                            = figurePath + sim::mutationMethodToString(method) + "_graph_" + timeStr + ".png";
+
+                        std::vector<std::string> stats_pngs = {
+                            figurePath + sim::mutationMethodToString(method) + "_Temp_v_Time_" + timeStr + ".png",
+                            figurePath + sim::mutationMethodToString(method) + "_Score_v_Time_" + timeStr + ".png",
+                            figurePath + sim::mutationMethodToString(method) + "_BestScore_v_Time_" + timeStr + ".png",
+                            figurePath + sim::mutationMethodToString(method) + "_ScoreDelta_v_Time_" + timeStr + ".png",
+                            figurePath + sim::mutationMethodToString(method) + "_AcceptanceRate_v_Time_" + timeStr
+                                + ".png",
+                        };
+
+                        viz.saveFigures(grid_gif, grid_png, graph_png, stats_pngs);
                     }
                 }
             } else {
@@ -142,7 +160,7 @@ int main(int argc, char* argv[])
 #else
 
     std::cout << "Compiled without Python support, skipping visualization regardless of flags." << std::endl;
-    sim::simulateAnnealing(graph, args.flagMap, plotType, method);
+    sim::simulateAnnealing(graph, INITIAL_TEMPERATURE, COOLING_RATE, method);
 
 #endif // HAVE_PYTHON
 

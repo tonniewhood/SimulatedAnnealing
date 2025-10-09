@@ -7,6 +7,7 @@
 
 #include <Python.h>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -19,8 +20,18 @@ namespace viz {
 
 struct VizUpdate {
 
+    // Per iteration data (buffered) Each entry corresponds to an annealing iteration
+    // with a timestamp, temperature, score, best score, and score delta
+    std::vector<std::chrono::duration<double, std::nano>> timeStamps; // Measured in nanoseconds since start
+    std::vector<double> temperatures;
+    std::vector<int> scores;
+    std::vector<int> bestScores;
+    std::vector<int> scoreDeltas;
+    std::vector<double> acceptanceRates;
+
+    // Per update data
     std::vector<util::Position> positions;
-    double score = 0.0;
+    double currentScore = 0.0;
 
     VizUpdate() = default;
 };
@@ -64,11 +75,10 @@ public:
 
     /**
      * @brief Update the grid visualization with current positions
-     * @param positions Current vertex positions
-     * @param score Current annealing score
+     * @param update Update structure containing relevant stats/data
      * @note Only updates at approximately 30 FPS to avoid overwhelming the GUI
      */
-    void updateViz(const std::vector<util::Position>& positions, double score);
+    void updateViz(const VizUpdate& update);
 
     /**
      * @brief Keep the visualization alive for a short period to allow GUI event processing
@@ -84,7 +94,7 @@ public:
      */
     void saveFigures(const std::string& gridAnimationFilename = "grid.gif",
         const std::string& gridStaticFilename = "grid.png", const std::string& graphFilename = "graph.png",
-        const std::string& statsFilename = "stats.png");
+        const std::vector<std::string>& statsFilenames = {});
 
     /**
      * @brief Callback when the Python visualization window is closed by the user
@@ -178,24 +188,6 @@ private:
  */
 void visualizationLoop(PyVisualizer& viz);
 
-}; // namespace viz
-
-#else
-
-#include <memory>
-#include <vector>
-
-#include "util.hpp"
-
-namespace viz {
-struct VizUpdate {
-
-    std::vector<util::Position> positions;
-    double score = 0.0;
-
-    VizUpdate() = default;
-};
-using ThreadControlPtr = std::shared_ptr<util::ThreadControls<VizUpdate>>;
 }; // namespace viz
 
 #endif // HAVE_PYTHON

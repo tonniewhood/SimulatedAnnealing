@@ -342,6 +342,10 @@ void revertCentroid(Graph& graph, const SolutionAlterations& alterations)
 static const MutationFunction mutationMethods[] = { naiveNeighbor, conwayNeighbor, shiftNeighbor, centroidNeighbor };
 static const RestoreFunction restoreMethods[] = { revertNaive, revertConway, revertShift, revertCentroid };
 
+#if HAVE_PYTHON
+
+#define WINDOW_LEN 200
+
 /**
  * @brief Simulates the annealing process on the provided graph using specified flags. It will
  * attempt to place the graph's vertices on a grid in a way that minimizes the square of the
@@ -381,15 +385,247 @@ void simulateAnnealing(Graph& graph, double startingTemperature, double coolingR
     // std::mt19937 generator(randomSeed());
     std::mt19937 generator(0); // For reproducibility during testing
     std::uniform_real_distribution<double> probabilityDistribution(0.0, 1.0);
+    if (method < NAIVE || method > CENTROID) {
+        std::cerr << "Invalid mutation method specified, defaulting to NAIVE." << std::endl;
+        method = NAIVE;
+    }
+
+    std::cout << "Starting Simulated Annealing with method: " << mutationMethodToString(method) << std::endl;
+
+    // Get an initial solution (it'll just be sequential placement on the grid for now)
+    graph.initializeVertexPositions();
+
+    int lastUsedDistance = graph.scoreGraphLayout();
+
+    // Use this to track the best positions found so far to make sure we're not potentially
+    // losing a better position when the randomness of the algorithm kicks in
+    std::vector<util::Position> lastBestPositions = graph.getCopyVertexPositions();
+    int lastBestDistance = lastUsedDistance;
+    double temperature = startingTemperature;
+    int iteration = 0;
+
+    // Unused if we're not sending updates
+    auto start_time = steadyClock::now();
+    auto next_frame = start_time + frame_dt;
+    std::vector<std::chrono::duration<double, std::nano>> timestamps;
+    std::vector<double> temperatures;
+    std::vector<int> scores;
+    std::vector<int> bestScores;
+    std::vector<int> scoreDeltas;
+    std::vector<double> acceptanceRates;
+    std::deque<double> acceptedScores;
+
+    if (sendUpdates) {
+        timestamps.reserve(1000); // Arbitrary initial capacity
+        temperatures.reserve(1000);
+        scores.reserve(1000);
+        bestScores.reserve(1000);
+        scoreDeltas.reserve(1000);
+        acceptanceRates.reserve(1000);
+    }
+
+    while (temperature > THRESHOLD_TEMPERATURE) {
+
+        if (vizThreadControls) {
+            if (vizThreadControls->shouldStop.load()) {
+                std::cout << "Annealing process received stop signal, terminating early." << std::endl;
+                vizThreadControls->stoppedEarly.store(true);
+                return;
+            }
+        }
+
+        // Generate a new solution by randomly swapping two vertex positions
+        SolutionAlterations alterations = mutationMethods[method](graph, generator);
+        int newDistance = graph.scoreGraphLayout(); // Consider caching and updating on swaps later
+        // If our distance is smaller, we have a better solution, so keep it
+        if (newDistance < lastUsedDistance) {
+            lastUsedDistance = newDistance;
+            // We only save the best positions if we've actually improved
+            if (lastUsedDistance < lastBestDistance) {
+                lastBestPositions = graph.getCopyVertexPositions();
+                lastBestDistance = lastUsedDistance;
+            }
+
+            if (sendUpdates) {
+                acceptedScores.push_back(1.);
+                if (acceptedScores.size() > WINDOW_LEN) {
+                    acceptedScores.pop_front();
+                }
+            }
+        } else {
+            // If we didn't improve, we might still accept the new position with some
+            // probability
+            int deltaE = std::abs(lastUsedDistance - newDistance);
+            double acceptanceProbability = std::exp(-static_cast<double>(deltaE) / temperature);
+            double randomProbability = probabilityDistribution(generator);
+            // Here, we accept the new solution, but don't update the best known positions
+            if (randomProbability <= acceptanceProbability) {
+                lastUsedDistance = newDistance;
+                if (sendUpdates) {
+                    acceptedScores.push_back(1.);
+                    if (acceptedScores.size() > WINDOW_LEN) {
+                        acceptedScores.pop_front();
+                    }
+                }
+            }
+            // If we don't accept the new solution, revert to the last best known positions
+            // This isn't strictly part of the algorithm, but due to my in place alteration to
+            // avoid copying the entire position vector, I need to do this to ensure I don't use
+            // a solution that I've already rejected
+            else {
+                restoreMethods[method](graph, alterations);
+                if (sendUpdates) {
+                    acceptedScores.push_back(0.);
+                    if (acceptedScores.size() > WINDOW_LEN) {
+                        acceptedScores.pop_front();
+                    }
+                }
+            }
+        }
+
+        if (sendUpdates && vizThreadControls) {
+
+            if (timestamps.size() >= static_cast<size_t>(static_cast<double>(timestamps.capacity()) * 0.75)) {
+                // If we've used up 75% of our capacity, double the size of all the vectors
+                timestamps.reserve(timestamps.capacity() * 2);
+                temperatures.reserve(temperatures.capacity() * 2);
+                scores.reserve(scores.capacity() * 2);
+                bestScores.reserve(bestScores.capacity() * 2);
+                scoreDeltas.reserve(scoreDeltas.capacity() * 2);
+                acceptanceRates.reserve(acceptanceRates.capacity() * 2);
+            }
+
+            auto current_time = steadyClock::now();
+            timestamps.push_back(std::chrono::duration<double, std::nano>(current_time - start_time));
+            temperatures.push_back(temperature);
+            scores.push_back(lastUsedDistance);
+            bestScores.push_back(lastBestDistance);
+            scoreDeltas.push_back(lastUsedDistance - scores.back());
+
+            double acceptanceRate = std::accumulate(acceptedScores.begin(), acceptedScores.end(), 0.)
+                / static_cast<double>(acceptedScores.size());
+
+            acceptanceRates.push_back(acceptanceRate);
+
+            if (current_time >= next_frame) {
+                // If we have visualization controls, send an update
+                viz::VizUpdate update;
+
+                // Copy over the buffered data
+                update.timeStamps = timestamps;
+                update.temperatures = temperatures;
+                update.scores = scores;
+                update.bestScores = bestScores;
+                update.scoreDeltas = scoreDeltas;
+                update.acceptanceRates = acceptanceRates;
+
+                // Clear the buffers for the next round
+                timestamps.clear();
+                temperatures.clear();
+                scores.clear();
+                bestScores.clear();
+                scoreDeltas.clear();
+                acceptanceRates.clear();
+
+                update.currentScore = lastUsedDistance;
+                update.positions = graph.getCopyVertexPositions();
+
+                {
+                    std::unique_lock<std::mutex> lock(vizThreadControls->queueMutex);
+                    vizThreadControls->messageQueue.push(update);
+                }
+                vizThreadControls->queueCondition.notify_one();
+
+                next_frame += frame_dt;
+            }
+        }
+
+        temperature *= coolingRate; // Cool down the system
+        iteration++; // Just used to debug/report
+    }
+    // At the end, make sure we have the best positions found during the entire process
+    graph.getVertexPositionsRef() = lastBestPositions;
+
+    std::cout << "Completed Simulated Annealing" << std::endl;
+    std::cout << "Run " << iteration << " iterations." << std::endl;
+
+    // Send the final state, and then let the user close the viz windows
+    if (sendUpdates) {
+        viz::VizUpdate update;
+
+        // Copy over the buffered data
+        std::copy(timestamps.begin(), timestamps.end(), std::back_inserter(update.timeStamps));
+        std::copy(temperatures.begin(), temperatures.end(), std::back_inserter(update.temperatures));
+        std::copy(scores.begin(), scores.end(), std::back_inserter(update.scores));
+        std::copy(bestScores.begin(), bestScores.end(), std::back_inserter(update.bestScores));
+        std::copy(scoreDeltas.begin(), scoreDeltas.end(), std::back_inserter(update.scoreDeltas));
+
+        // Clear the buffers for the next round
+        timestamps.clear();
+        temperatures.clear();
+        scores.clear();
+        bestScores.clear();
+        scoreDeltas.clear();
+
+        update.currentScore = lastUsedDistance;
+        update.positions = graph.getCopyVertexPositions();
+
+        {
+            std::unique_lock<std::mutex> lock(vizThreadControls->queueMutex);
+            vizThreadControls->messageQueue.push(update);
+        }
+        vizThreadControls->queueCondition.notify_one();
+
+        std::cout << "Close the visualization windows to exit." << std::endl;
+    }
+}
+
+#else
+
+/**
+ * @brief Simulates the annealing process on the provided graph using specified flags. It will
+ * attempt to place the graph's vertices on a grid in a way that minimizes the square of the
+ * distances between connected vertices.
+ * @param graph The graph to perform simulated annealing on.
+ * @param flags A vector of strings representing various flags that determine what additional
+ * features to use.
+ */
+void simulateAnnealing(Graph& graph, double startingTemperature, double coolingRate, MutationMethod method)
+{
+    /*
+    Pseudocode for Simulated Annealing:
+    Begin
+        generate initial solution
+        score initial solution
+        set initial temperature (T)
+        Loop
+            generate new solution
+            score new solution
+            If new better than old
+                replace old solution with new
+            Else
+                compute ΔE (ΔE = |scoreold − scorenew|)
+                compute acceptance probability (p = e-ΔE/T)
+                generate random probability (r)
+                If (r ≤ p)
+                    replace old solution with new
+                    EndIf
+                EndIf
+            lower T
+        EndLoop when T is below threshold
+    End
+    */
+
+    // std::random_device randomSeed;
+    // std::mt19937 generator(randomSeed());
+    std::mt19937 generator(0); // For reproducibility during testing
+    std::uniform_real_distribution<double> probabilityDistribution(0.0, 1.0);
     MutationFunction mutationMethod;
     RestoreFunction restoreMethod;
     if (method < NAIVE || method > CENTROID) {
         std::cerr << "Invalid mutation method specified, defaulting to NAIVE." << std::endl;
         method = NAIVE;
     }
-
-    // ---- Used if we're plotting, but we still need he handles inside the loop ----
-    auto next_frame = steadyClock::now() + frame_dt;
 
     std::cout << "Starting Simulated Annealing with method: " << mutationMethodToString(method) << std::endl;
 
@@ -405,16 +641,6 @@ void simulateAnnealing(Graph& graph, double startingTemperature, double coolingR
     double temperature = startingTemperature;
     int iteration = 0;
     while (temperature > THRESHOLD_TEMPERATURE) {
-
-#if HAVE_PYTHON
-        if (vizThreadControls) {
-            if (vizThreadControls->shouldStop.load()) {
-                std::cout << "Annealing process received stop signal, terminating early." << std::endl;
-                vizThreadControls->stoppedEarly.store(true);
-                return;
-            }
-        }
-#endif // HAVE_PYTHON
 
         // Generate a new solution by randomly swapping two vertex positions
         SolutionAlterations alterations = mutationMethods[method](graph, generator);
@@ -446,23 +672,6 @@ void simulateAnnealing(Graph& graph, double startingTemperature, double coolingR
             }
         }
 
-#if HAVE_PYTHON
-        if (sendUpdates && vizThreadControls && steadyClock::now() >= next_frame) {
-            // If we have visualization controls, send an update
-            viz::VizUpdate update;
-            update.score = lastUsedDistance;
-            update.positions = graph.getCopyVertexPositions();
-
-            {
-                std::unique_lock<std::mutex> lock(vizThreadControls->queueMutex);
-                vizThreadControls->messageQueue.push(update);
-            }
-            vizThreadControls->queueCondition.notify_one();
-
-            next_frame += frame_dt;
-        }
-#endif // HAVE_PYTHON
-
         temperature *= coolingRate; // Cool down the system
         iteration++; // Just used to debug/report
     }
@@ -471,22 +680,8 @@ void simulateAnnealing(Graph& graph, double startingTemperature, double coolingR
 
     std::cout << "Completed Simulated Annealing" << std::endl;
     std::cout << "Run " << iteration << " iterations." << std::endl;
-
-#if HAVE_PYTHON
-    // Send the final state, and then let the user close the viz windows
-    if (sendUpdates) {
-        viz::VizUpdate update;
-        update.score = lastUsedDistance;
-        update.positions = graph.getCopyVertexPositions();
-
-        {
-            std::unique_lock<std::mutex> lock(vizThreadControls->queueMutex);
-            vizThreadControls->messageQueue.push(update);
-        }
-        vizThreadControls->queueCondition.notify_one();
-
-        std::cout << "Close the visualization windows to exit." << std::endl;
-    }
-#endif // HAVE_PYTHON
 }
+
+#endif // HAVE_PYTHON
+
 }; // namespace sim

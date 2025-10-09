@@ -6,9 +6,19 @@ from dataclasses import dataclass
 
 from AnimatedGrid import AnimatedGrid
 from BasicDigraph import BasicDigraph
+from StatsGraph import StatsGraph
 
 @dataclass
 class VizUpdate:
+    # Per Iteration data (buffered)
+    time_stamps: list[float]
+    temperatures: list[float]
+    scores: list[float]
+    best_scores: list[float]
+    delta_scores: list[float]
+    acceptance_rates: list[float]
+
+    # Per Update data
     current_positions: list
     score: float | str = "N/A"
 
@@ -36,12 +46,17 @@ class Viz:
             raise ValueError("At least one of GRID_MASK, GRAPH_MASK, or STATS_MASK must be set in plotting_flags")
         
         num_plots = bin(plotting_flags).count("1")
-        self.figure, self.axes = plt.subplots(1, num_plots, figsize=(10 * num_plots, 8))
+        self.figure, self.axes = plt.subplots(1, num_plots, figsize=(8 * num_plots, 6))
         if num_plots == 1:
             self.axes = [self.axes]  # Ensure axes is always a list
 
         self.plotting_flags = plotting_flags
         self.axis_iter = iter(self.axes)
+
+        print("Flag settings:")
+        print(f"GRID_MASK: {bool(self.plotting_flags & self.GRID_MASK)}")
+        print(f"GRAPH_MASK: {bool(self.plotting_flags & self.GRAPH_MASK)}")
+        print(f"STATS_MASK: {bool(self.plotting_flags & self.STATS_MASK)}")
 
         # Connect close event
         self.figure.canvas.mpl_connect('close_event', self.on_close)
@@ -66,24 +81,27 @@ class Viz:
             raise RuntimeError("GRAPH_MASK not set in plotting_flags; cannot initialize graph.")
 
     def init_stats(self):
-        raise NotImplementedError("Statistics plotting not yet implemented.")
+        if self.plotting_flags & self.STATS_MASK:
+            self.stats = StatsGraph(figure=self.figure, ax=next(self.axis_iter, None), figsize=(8, 6))
+        else:
+            raise RuntimeError("STATS_MASK not set in plotting_flags; cannot initialize stats.")
 
     def show(self):
 
         if self.plotting_flags & self.GRID_MASK:
             if not self.grid:
                 raise RuntimeError("GRID_MASK set but grid not initialized.")
-
             self.grid.live_update_mode()
 
         if self.plotting_flags & self.GRAPH_MASK:
             if not self.graph:
                 raise RuntimeError("GRAPH_MASK set but graph not initialized.")
-
             self.graph.display()
 
         if self.plotting_flags & self.STATS_MASK:
-            raise RuntimeError("STATS_MASK set but stats not initialized.")
+            if not self.stats:
+                raise RuntimeError("STATS_MASK set but stats not initialized.")
+            self.stats.live_update_mode()
         
     def keep_alive(self, pause_time=0.1):
         plt.pause(pause_time)
@@ -101,21 +119,31 @@ class Viz:
                 raise RuntimeError("GRID_MASK set but grid not initialized.")
             self.grid.update_positions(update.current_positions, score=update.score)
             self.sequence.append((update.score, update.current_positions))
-        else:
-            raise RuntimeError("GRID_MASK not set in plotting_flags; cannot update grid.")
+        if self.plotting_flags & self.STATS_MASK:
+            if not self.stats:
+                raise RuntimeError("STATS_MASK set but stats not initialized.")
+
+            self.stats.update_stats(
+                time_stamps=update.time_stamps,
+                temperatures=update.temperatures,
+                scores=update.scores,
+                best_scores=update.best_scores,
+                delta_scores=update.delta_scores,
+                acceptance_rates=update.acceptance_rates
+            )
 
     def viz_active(self):
         return not self.shutdown_requested
     
-    def save_figs(self, grid_animation_filename=None, grid_static_filename=None, graph_filename=None, stats_filename=None):
+    def save_figs(self, grid_animation_filename=None, grid_static_filename=None, graph_filename=None, stats_filenames=None):
         if self.plotting_flags & self.GRID_MASK and self.grid and grid_animation_filename is not None and grid_static_filename is not None:
             self.grid.save_gif(filename=grid_animation_filename)
             self.grid.save_final_state(filename=grid_static_filename)
             print(f"Grid figure saved as '{grid_animation_filename}'")
         if self.plotting_flags & self.GRAPH_MASK and self.graph and graph_filename is not None:
             self.graph.save(graph_filename)
-        if self.plotting_flags & self.STATS_MASK and self.stats and stats_filename is not None:
-            raise NotImplementedError("Statistics saving not yet implemented.")
+        if self.plotting_flags & self.STATS_MASK and self.stats and stats_filenames is not None:
+            self.stats.save_figs(stats_filenames)
 
 if __name__ == "__main__":
 

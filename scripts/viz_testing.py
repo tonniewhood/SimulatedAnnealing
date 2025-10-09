@@ -1,10 +1,13 @@
 
 import time
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 from AnimatedGrid import AnimatedGrid
 from BasicDigraph import BasicDigraph
+from StatsGraph import StatsGraph
+from matplotlib.widgets import RadioButtons
 
 
 def test_animated_grid():
@@ -129,8 +132,47 @@ def test_graph():
     graph.save()
     print("Graph window closed!")
 
+def test_stats_graph():
+
+    NUM_PLOTS = 3
+    fig, ax = plt.subplots(1, NUM_PLOTS, figsize=(8 * NUM_PLOTS, 6))
+    stat_ax = ax[-1] if NUM_PLOTS > 1 else ax
+    stats = StatsGraph(title="Stats Graph Test", figure=fig, ax=stat_ax, figsize=(8, 6))
+    fig.tight_layout()
+
+    # Example positions for each grid
+    t_full = np.linspace(0, 4, 250)  # 250 points, 40ms per point = 10s
+    y1_full = np.sqrt(t_full)
+    y2_full = np.power(t_full, 2)
+    y3_full = np.sin(0.5 * np.pi * t_full)
+
+    plt.show(block=False)
+
+    for t in range(0, 251, 5):
+        timestamps = t_full[t:t+5]
+        tempuratures = y1_full[t:t+5]
+        scores = y2_full[t:t+5]
+        best_scores = y3_full[t:t+5]
+        delta_scores = [0] * len(timestamps)  # Placeholder
+        acceptance_rates = [0.5] * len(timestamps)  # Placeholder
+
+        stats.update_positions(timestamps, tempuratures, scores, best_scores, delta_scores, acceptance_rates)
+        plt.pause(0.01)
+        plt.show(block=False)
+
+    plt.show(block=True)
+
+    stats.save_figs([
+        "Temperature_vs_Time.png",
+        "Score_vs_Time.png",
+        "BestScore_vs_Time.png",
+        "DeltaScore_vs_Time.png",
+        "AcceptanceRate_vs_Time.png",
+    ])
+
 if __name__ == "__main__":
-    test_animated_grid()
+    # test_animated_grid()
     # test_color_map()
     # test_graph()
     # print("Working in it!")
+    test_stats_graph()

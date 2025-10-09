@@ -125,9 +125,7 @@ util::Args util::parseCommandLineArgs(int argc, char* argv[])
             if (i > 2) {
                 args.flagMap.insert(parseFlag(arg));
             } else {
-                std::cerr
-                    << "Error: Flags must be provided after the first three positional arguments."
-                    << std::endl;
+                std::cerr << "Error: Flags must be provided after the first three positional arguments." << std::endl;
                 printUsageAndExit();
             }
         } else { // Positional argument
@@ -191,4 +189,26 @@ std::filesystem::path util::createOutputFilePath(
     }
 
     return fs::path(outputFileName);
+}
+
+/**
+ * @brief Returns the current time in the format YYYY-MM-DDTHH:MM:SS
+ * @param currentTime The time to format. If nullptr, the current system time is used.
+ * @return A string representing the formatted time.
+ */
+std::string util::getCurrentTimeFormatted(const std::chrono::system_clock::time_point* currentTime)
+{
+    std::chrono::system_clock::time_point timePoint;
+    if (currentTime) {
+        timePoint = *currentTime;
+    } else {
+        timePoint = std::chrono::system_clock::now();
+    }
+
+    std::time_t timeT = std::chrono::system_clock::to_time_t(timePoint);
+    std::tm tm_now = *std::localtime(&timeT);
+
+    char timeStr[20];
+    std::strftime(timeStr, sizeof(timeStr), "%Y-%m-%dT%H:%M:%S", &tm_now);
+    return std::string(timeStr);
 }

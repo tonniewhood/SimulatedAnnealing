@@ -13,6 +13,8 @@
 
 namespace util {
 
+// The bitmasks aren't necessary if we're not using Python visualization, but they don't hurt anything
+// and it looks far cleaner here than including preprocessor instructions everywhere
 enum PlotFlags { NONE = 0x00, GRID_MASK = 0x01, GRAPH_MASK = 0x02, STATS_MASK = 0x04, ALL_MASK = 0x07 };
 typedef uint8_t PlotType; // Only need 3 bits to determine what to plot
 
@@ -72,6 +74,8 @@ struct Position {
     int distanceTo(const Position& other) const { return std::abs(row - other.row) + std::abs(col - other.col); }
 };
 
+// Controls for managing threads that communicate via message queues
+// Again, not vital if we're not using Python visualization, but it doesn't hurt anything
 template <typename MessageType> struct ThreadControls {
     std::queue<MessageType> messageQueue;
     std::mutex queueMutex;
@@ -125,6 +129,13 @@ std::filesystem::path getInputFileLocation(
  */
 std::filesystem::path createOutputFilePath(
     const std::filesystem::path& inputFilePath, const std::string& outputFileName);
+
+/**
+ * @brief Returns the current time in the format YYYY-MM-DDTHH:MM:SS
+ * @param currentTime The time to format. If nullptr, the current system time is used.
+ * @return A string representing the formatted time.
+ */
+std::string getCurrentTimeFormatted(const std::chrono::system_clock::time_point* currentTime = nullptr);
 
 };
 

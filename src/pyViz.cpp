@@ -199,8 +199,19 @@ bool PyVisualizer::initGraph(const std::vector<int>& offsets, const std::vector<
 
 bool PyVisualizer::initStats()
 {
-    std::cerr << "Stats visualization not yet implemented" << std::endl;
-    return false;
+    PyGILState_STATE gstate = PyGILState_Ensure();
+
+    PyObject* pResult = PyObject_CallMethod(pVizInstance, "init_stats", nullptr);
+    if (!pResult) {
+        std::cerr << "Failed to call init_stats method" << std::endl;
+        PyErr_Print();
+        PyGILState_Release(gstate);
+        return false;
+    }
+
+    Py_DECREF(pResult);
+    PyGILState_Release(gstate);
+    return true;
 }
 
 bool PyVisualizer::initializePython()
@@ -292,7 +303,7 @@ void PyVisualizer::displayFigures()
     PyGILState_Release(gstate);
 }
 
-void PyVisualizer::updateViz(const std::vector<util::Position>& positions, double score)
+void PyVisualizer::updateViz(const viz::VizUpdate& update)
 {
     if (!initialized) {
         std::cerr << "Visualizer not initialized, cannot update" << std::endl;
@@ -306,7 +317,15 @@ void PyVisualizer::updateViz(const std::vector<util::Position>& positions, doubl
 
     PyGILState_STATE gstate = PyGILState_Ensure();
 
-    PyObject* pPosList = PyList_New(positions.size());
+    PyObject* pUpdateArgs = PyTuple_New(8);
+    if (!pUpdateArgs) {
+        std::cerr << "Failed to create update arguments tuple" << std::endl;
+        PyErr_Print();
+        PyGILState_Release(gstate);
+        return;
+    }
+
+    PyObject* pPosList = PyList_New(update.positions.size());
     if (!pPosList) {
         std::cerr << "Failed to create Python list for positions" << std::endl;
         PyErr_Print();
@@ -314,7 +333,7 @@ void PyVisualizer::updateViz(const std::vector<util::Position>& positions, doubl
         return;
     }
 
-    for (size_t i = 0; i < positions.size(); i++) {
+    for (size_t i = 0; i < update.positions.size(); i++) {
         PyObject* pPosTuple = PyTuple_New(2);
         if (!pPosTuple) {
             Py_DECREF(pPosList);
@@ -324,22 +343,57 @@ void PyVisualizer::updateViz(const std::vector<util::Position>& positions, doubl
             return;
         }
 
-        PyTuple_SetItem(pPosTuple, 0, PyLong_FromLong(positions[i].row));
-        PyTuple_SetItem(pPosTuple, 1, PyLong_FromLong(positions[i].col));
+        PyTuple_SetItem(pPosTuple, 0, PyLong_FromLong(update.positions[i].row));
+        PyTuple_SetItem(pPosTuple, 1, PyLong_FromLong(update.positions[i].col));
         PyList_SetItem(pPosList, i, pPosTuple);
     }
 
-    PyObject* pUpdateArgs = PyTuple_New(2);
-    if (!pUpdateArgs) {
-        std::cerr << "Failed to create update arguments tuple" << std::endl;
-        PyErr_Print();
-        Py_DECREF(pPosList);
-        PyGILState_Release(gstate);
-        return;
+    // Make the timestamps into a Python list of floats (seconds)
+    PyObject* pTimestamps = PyList_New(update.timeStamps.size());
+    for (size_t i = 0; i < update.timeStamps.size(); ++i) {
+        PyList_SetItem(pTimestamps, i,
+            PyFloat_FromDouble(
+                std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(update.timeStamps[i]).count()));
     }
 
-    PyTuple_SetItem(pUpdateArgs, 0, pPosList);
-    PyTuple_SetItem(pUpdateArgs, 1, PyFloat_FromDouble(score));
+    // Make the temperatures into a Python list of floats
+    PyObject* pTemperatures = PyList_New(update.temperatures.size());
+    for (size_t i = 0; i < update.temperatures.size(); ++i) {
+        PyList_SetItem(pTemperatures, i, PyFloat_FromDouble(update.temperatures[i]));
+    }
+
+    // Make the scores into a Python list of ints
+    PyObject* pScores = PyList_New(update.scores.size());
+    for (size_t i = 0; i < update.scores.size(); ++i) {
+        PyList_SetItem(pScores, i, PyLong_FromLong(update.scores[i]));
+    }
+
+    // Make the best scores into a Python list of ints
+    PyObject* pBestScores = PyList_New(update.bestScores.size());
+    for (size_t i = 0; i < update.bestScores.size(); ++i) {
+        PyList_SetItem(pBestScores, i, PyLong_FromLong(update.bestScores[i]));
+    }
+
+    // Make the score deltas into a Python list of ints
+    PyObject* pScoreDeltas = PyList_New(update.scoreDeltas.size());
+    for (size_t i = 0; i < update.scoreDeltas.size(); ++i) {
+        PyList_SetItem(pScoreDeltas, i, PyLong_FromLong(update.scoreDeltas[i]));
+    }
+
+    // Make the acceptance rates into a Python list of floats
+    PyObject* pAcceptanceRates = PyList_New(update.acceptanceRates.size());
+    for (size_t i = 0; i < update.acceptanceRates.size(); ++i) {
+        PyList_SetItem(pAcceptanceRates, i, PyFloat_FromDouble(update.acceptanceRates[i]));
+    }
+
+    PyTuple_SetItem(pUpdateArgs, 0, pTimestamps);
+    PyTuple_SetItem(pUpdateArgs, 1, pTemperatures);
+    PyTuple_SetItem(pUpdateArgs, 2, pScores);
+    PyTuple_SetItem(pUpdateArgs, 3, pBestScores);
+    PyTuple_SetItem(pUpdateArgs, 4, pScoreDeltas);
+    PyTuple_SetItem(pUpdateArgs, 5, pAcceptanceRates);
+    PyTuple_SetItem(pUpdateArgs, 6, pPosList);
+    PyTuple_SetItem(pUpdateArgs, 7, PyFloat_FromDouble(update.currentScore));
 
     PyObject* pUpdateInstance = PyObject_CallObject(pVizUpdateClass, pUpdateArgs);
     if (!pUpdateInstance) {
@@ -358,6 +412,7 @@ void PyVisualizer::updateViz(const std::vector<util::Position>& positions, doubl
     }
 
     Py_DECREF(pResult);
+
     PyGILState_Release(gstate);
 }
 
@@ -383,7 +438,7 @@ void PyVisualizer::keepAlive(double pauseTime)
 }
 
 void PyVisualizer::saveFigures(const std::string& gridAnimationFilename, const std::string& gridStaticFilename,
-    const std::string& graphFilename, const std::string& statsFilename)
+    const std::string& graphFilename, const std::vector<std::string>& statsFilenames)
 {
     if (!initialized) {
         std::cerr << "Visualizer not initialized, cannot save figures" << std::endl;
@@ -392,8 +447,28 @@ void PyVisualizer::saveFigures(const std::string& gridAnimationFilename, const s
 
     PyGILState_STATE gstate = PyGILState_Ensure();
 
-    PyObject* pResult = PyObject_CallMethod(pVizInstance, "save_figs", "ssss", gridAnimationFilename.c_str(),
-        gridStaticFilename.c_str(), graphFilename.c_str(), statsFilename.c_str());
+    PyObject* pStatFilenames = PyTuple_New(statsFilenames.size());
+    if (!pStatFilenames) {
+        std::cerr << "Failed to create stats filenames tuple" << std::endl;
+        PyErr_Print();
+        PyGILState_Release(gstate);
+        return;
+    }
+
+    for (size_t i = 0; i < statsFilenames.size(); ++i) {
+        PyObject* pFilename = PyUnicode_FromString(statsFilenames[i].c_str());
+        if (!pFilename) {
+            std::cerr << "Failed to create filename string" << std::endl;
+            PyErr_Print();
+            Py_DECREF(pStatFilenames);
+            PyGILState_Release(gstate);
+            return;
+        }
+        PyTuple_SetItem(pStatFilenames, i, pFilename);
+    }
+
+    PyObject* pResult = PyObject_CallMethod(pVizInstance, "save_figs", "sssO", gridAnimationFilename.c_str(),
+        gridStaticFilename.c_str(), graphFilename.c_str(), pStatFilenames);
     if (!pResult) {
         std::cerr << "Failed to call save_figs method" << std::endl;
         PyErr_Print();
@@ -510,7 +585,7 @@ void visualizationLoop(PyVisualizer& viz)
 
         // Process updates outside the lock
         if (hasUpdate) {
-            viz.updateViz(update.positions, update.score);
+            viz.updateViz(update);
         }
     }
 
