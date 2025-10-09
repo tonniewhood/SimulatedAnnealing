@@ -1,170 +1,122 @@
-
-import matplotlib.animation as animation
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
+# animated_grid_pg.py
+import numpy as np
+import tempfile
+import os
+from PyQt5 import QtWidgets
+import pyqtgraph as pg
+import imageio
+from pyqtgraph.exporters import ImageExporter
 
 class AnimatedGrid:
-    """
-    Animated grid visualization for simulated annealing progress.
-    """
-
-    def __init__(self, NROWS, NCOLS, title="Simulated Annealing Progress", use_color_map=False, num_nodes=1, figure=None, ax=None):
-        
-        self.NROWS = NROWS
-        self.NCOLS = NCOLS
-        self.fig, self.ax = (figure, ax) if (figure and ax) else plt.subplots(figsize=(10, 8))
+    def __init__(self, NROWS, NCOLS, title="Simulated Annealing Progress", use_color_map=False, num_nodes=1):
+        self.NROWS, self.NCOLS = NROWS, NCOLS
         self.title = title
         self.use_color_map = use_color_map
         self.num_nodes = num_nodes
 
-        if use_color_map and num_nodes < 1:
-            raise ValueError("num_nodes must be at least 1 when use_color_map is True")
+        self.widget = pg.GraphicsLayoutWidget()
+        self.plot = self.widget.addPlot()
+        self.plot.setTitle(self.title)
+        self.plot.setAspectLocked(True)
+        self.plot.setXRange(-0.5, NCOLS - 0.5, padding=0)
+        self.plot.setYRange(-0.5, NROWS - 0.5, padding=0)
+        self.plot.invertY(True)
+        self.plot.hideAxis('bottom')
+        self.plot.hideAxis('left')
 
-        self.color_map = plt.cm.get_cmap('plasma', num_nodes) if use_color_map else None
+        # light checkerboard background (optional)
+        bg = pg.ImageItem(self._checkerboard(NROWS, NCOLS))
+        bg.setZValue(-10)
+        self.plot.addItem(bg)
 
-        # Setup the plot
-        self.setup_plot()
-        
-        # Storage for current state
-        self.circles = []
-        self.texts = []
-        self.current_positions = []
-        self.current_indices = []
+        # single scatter for all nodes
+        self.scatter = pg.ScatterPlotItem(size=16, pen=pg.mkPen(None),
+                                          brush=None if use_color_map else pg.mkBrush(70,130,180))
+        self.plot.addItem(self.scatter)
+
+        # pre-allocate label TextItems if you still want indices
+        self.labels = []
         self.sequence = []
-        
-        # Animation properties
-        self.is_running = False
-        self.animation_obj = None
 
+    def _checkerboard(self, rows, cols):
+        a = np.indices((rows, cols)).sum(axis=0) % 2
+        img = a.astype(np.float32)
+        return img  # colormap handled by pyqtgraph’s LUT if you want
 
-    def setup_plot(self):
-        """Initialize the plot with grid background."""
-        # Remove axes, ticks, and labels
-        self.ax.set_xlim(-0.5, self.NCOLS - 0.5)
-        self.ax.set_ylim(-0.5, self.NROWS - 0.5)
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
-        self.ax.set_aspect('equal')
-        
-        # Draw grid squares background
-        for i in range(self.NROWS):
-            for j in range(self.NCOLS):
-                color = 'lightgray' if (i + j) % 2 == 0 else 'white'
-                square = patches.Rectangle((j - 0.5, i - 0.5), 1, 1, 
-                                         linewidth=0.5, edgecolor='gray', 
-                                         facecolor=color, alpha=0.3)
-                self.ax.add_patch(square)
-        
-        # Add border
-        for spine in self.ax.spines.values():
-            spine.set_visible(True)
-            spine.set_linewidth(2)
-        
-        # Invert y-axis
-        self.ax.invert_yaxis()
-        
     def update_positions(self, new_positions, new_indices=None, score=None, draw=True):
-        """Update node positions and redraw."""
-        # Clear existing nodes
-        for circle in self.circles:
-            circle.remove()
-        for text in self.texts:
-            text.remove()
-        
-        self.circles.clear()
-        self.texts.clear()
-        
-        # Store new state
-        self.current_positions = new_positions.copy()
-        self.sequence.append((score, new_positions.copy()))
-        self.current_indices = new_indices.copy() if new_indices else list(range(len(new_positions)))
-        
-        # Draw new nodes
-        for idx, (row, col) in enumerate(new_positions):
-            # Draw circle
-            if self.use_color_map and self.color_map is not None:
-                color = self.color_map(idx)
-            else:
-                color = 'steelblue'
-            circle = plt.Circle((col, row), 0.3, color=color, linewidth=1.5, zorder=3)
-            
-            self.ax.add_patch(circle)
-            self.circles.append(circle)
-            
-            # Add text
-            label = str(self.current_indices[idx]) if idx < len(self.current_indices) else str(idx)
-            text = self.ax.text(col, row, label, ha='center', va='center', 
-                               color='white', fontweight='bold', fontsize=15, zorder=4)
-            self.texts.append(text)
-        
-        # Update title with iteration info
-        title_text = self.title
-        if score is not None:
-            title_text += f" - Score: {score}"
-        
-        self.ax.set_title(title_text, pad=20)
+        if not new_positions:
+            return
+        pts = np.asarray(new_positions, dtype=float)  # [(r,c),...]
+        self.sequence.append(pts)
+        # swap to (x=col, y=row)
+        xy = np.c_[pts[:,1], pts[:,0]]
 
-        if draw:
-            # Force redraw and process events
-            self.fig.canvas.draw()
-            self.fig.canvas.flush_events()
-    
+        brushes = None
+        if self.use_color_map:
+            # simple categorical colors
+            brushes = [pg.intColor(i, hues=self.num_nodes) for i in range(len(xy))]
+
+        self.scatter.setData(x=xy[:,0], y=xy[:,1], brush=brushes)
+
+        if score is not None:
+            self.plot.setTitle(f"{self.title} - Score: {score:.2f}")
+
+        # Force a repaint to ensure updates are visible
+        self.widget.repaint()
+
+        # optional labels (avoid for maximum speed)
+        if new_indices is not None:
+            # simple label pool
+            while len(self.labels) < len(xy):
+                t = pg.TextItem("", anchor=(0.5,0.5), color='w')
+                t.setZValue(20)
+                self.plot.addItem(t)
+                self.labels.append(t)
+            for i,(x,y) in enumerate(xy):
+                self.labels[i].setText(str(new_indices[i]) if i < len(new_indices) else str(i))
+                self.labels[i].setPos(x,y)
+
     def live_update_mode(self):
-        """
-        Set up for live updates during simulation.
-        Call update_positions() whenever you want to update the display.
-        """
-        plt.ion()  # Turn on interactive mode
-        self.is_running = True
+        pass  # not needed with Qt; Viz.show/keep_alive drives the loop
 
     def close(self):
-        """Close the animation."""
-        self.is_running = False
-        plt.ioff()
-        plt.close(self.fig)
+        self.widget.close()
 
     def save_gif(self, filename="animation.gif", final_frame_hold_seconds=2., fps=10):
+        if not self.sequence:
+            print("No frames to save.")
+            return
 
-        num_frames = len(self.sequence) + int(final_frame_hold_seconds * fps)
-        save_seq = self.sequence + [self.sequence[-1]] * int(final_frame_hold_seconds * fps)
+        images = []
+        exporter = ImageExporter(self.plot)
+        exporter.parameters()['width'] = 400  # adjust as needed
 
-        # Create the animation callback function
-        def animate_frame(frame):
-            positions = save_seq[frame][1]
-            score = save_seq[frame][0]
-            self.update_positions(positions, None, score, draw=False)
-            return self.circles + self.texts
+        # Save each frame in the sequence
+        for frame in self.sequence:
+            # Update scatter to this frame
+            xy = np.c_[frame[:,1], frame[:,0]]
+            brushes = None
 
-        # Make a temporary figure to save the GIF
-        temp_fig, temp_ax = self.fig, self.ax
-        self.fig, self.ax = plt.subplots(figsize=(10, 8))
-        self.setup_plot()
+            if self.use_color_map:
+                brushes = [pg.intColor(i, hues=self.num_nodes) for i in range(len(xy))]
+                self.scatter.setData(x=xy[:,0], y=xy[:,1], brush=brushes)
 
-        # Create animation object
-        anim = animation.FuncAnimation(
-            self.fig, animate_frame, frames=num_frames,
-            interval=(num_frames*1000)/fps, blit=False, repeat=True
-        )
+            QtWidgets.QApplication.processEvents()
+            # Export to temporary file and read back as array
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                temp_path = tmp.name
+            exporter.export(temp_path)
+            images.append(imageio.imread(temp_path))
+            os.unlink(temp_path)  # Clean up temp file
 
-        anim.save(filename=filename, writer='pillow', fps=fps)
+        # Hold the final frame
+        for _ in range(int(final_frame_hold_seconds * fps)):
+            images.append(images[-1])
 
-        # Restore original figure and axis
-        self.fig, self.ax = temp_fig, temp_ax
-        self.setup_plot()
+        imageio.mimsave(filename, images, fps=fps)
+
 
     def save_final_state(self, filename="final_state.png"):
-        
-        # Save the current figure and axis state so we can return to it
-        temp_fig, temp_ax = self.fig, self.ax
-
-        # Make a temporary figure to save the final state
-        self.fig, self.ax = plt.subplots(figsize=(10, 8))
-        self.setup_plot()
-
-        # Draw the current positions on the temporary figure
-        self.update_positions(self.current_positions, self.current_indices, score=self.sequence[-1][0], draw=False)
-        self.fig.savefig(filename)
-
-        # Restore original figure and axis
-        self.fig, self.ax = temp_fig, temp_ax
-        self.setup_plot()
+        exporter = pg.exporters.ImageExporter(self.plot)
+        exporter.parameters()['width'] = 400  # or whatever size you want
+        exporter.export(filename)
