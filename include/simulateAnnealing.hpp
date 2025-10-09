@@ -19,7 +19,7 @@ using ThreadControlPtr = std::shared_ptr<util::ThreadControls<VizUpdate>>;
 
 namespace sim {
 
-enum MutationMethod { NAIVE, CONWAY, UNDEFINED };
+enum MutationMethod { NAIVE, CONWAY, SHIFT, CENTROID, UNDEFINED };
 
 struct SolutionAlterations {
     struct {
@@ -29,18 +29,14 @@ struct SolutionAlterations {
         util::Position srcPos, dstPos;
     } positions;
 
-    SolutionAlterations(
-        int src, int dst, const util::Position& srcPos, const util::Position& dstPos)
+    SolutionAlterations(int src, int dst, const util::Position& srcPos, const util::Position& dstPos)
         : vertices({ src, dst })
         , positions({ srcPos, dstPos })
     {
     }
 };
 
-using MutationFunction = std::function<SolutionAlterations(Graph& graph, std::mt19937& generator,
-    std::uniform_int_distribution<int>& srcVertexDistribution,
-    std::uniform_int_distribution<int>& dstVertexDistribution,
-    std::uniform_real_distribution<double>& probabilityDistribution)>;
+using MutationFunction = std::function<SolutionAlterations(Graph& graph, std::mt19937& generator)>;
 using RestoreFunction = std::function<void(Graph& graph, const SolutionAlterations& alterations)>;
 
 /**
@@ -51,8 +47,8 @@ using RestoreFunction = std::function<void(Graph& graph, const SolutionAlteratio
  * @param flags A vector of strings representing various flags that deterimine what additional
  * features to use.
  */
-void simulateAnnealing(Graph& graph, MutationMethod method = NAIVE, bool sendUpdates = false,
-    viz::ThreadControlPtr vizThreadControls = nullptr);
+void simulateAnnealing(Graph& graph, double startTemperature, double coolingRate, MutationMethod method = NAIVE,
+    bool sendUpdates = false, viz::ThreadControlPtr vizThreadControls = nullptr);
 
 /**
  * @brief Converts a mutation method into the corresponding string value
@@ -68,14 +64,6 @@ std::string mutationMethodToString(MutationMethod method);
  * @return The enum element
  */
 MutationMethod stringToMutationMethod(const std::string& methodStr);
-
-/* Debug section REMOVE THIS!!! */
-SolutionAlterations conwayNeighbor(Graph& graph, std::mt19937& generator,
-    std::uniform_int_distribution<int>& srcVertexDistribution,
-    std::uniform_int_distribution<int>& dstVertexDistribution,
-    std::uniform_real_distribution<double>& /*probabilityDistribution*/);
-
-void revertConway(Graph& graph, const SolutionAlterations& alterations);
 
 }; // namespace sim
 

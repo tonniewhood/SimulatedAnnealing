@@ -83,8 +83,7 @@ public:
      * @param statsFilename Filename for the stats visualization
      */
     void saveFigures(const std::string& gridAnimationFilename = "grid.gif",
-        const std::string& gridStaticFilename = "grid.png",
-        const std::string& graphFilename = "graph.png",
+        const std::string& gridStaticFilename = "grid.png", const std::string& graphFilename = "graph.png",
         const std::string& statsFilename = "stats.png");
 
     /**
@@ -183,7 +182,21 @@ void visualizationLoop(PyVisualizer& viz);
 
 #else
 
-#include <iostream>
+#include <memory>
+#include <vector>
+
+#include "util.hpp"
+
+namespace viz {
+struct VizUpdate {
+
+    std::vector<util::Position> positions;
+    double score = 0.0;
+
+    VizUpdate() = default;
+};
+using ThreadControlPtr = std::shared_ptr<util::ThreadControls<VizUpdate>>;
+}; // namespace viz
 
 #endif // HAVE_PYTHON
 

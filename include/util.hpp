@@ -13,13 +13,7 @@
 
 namespace util {
 
-enum PlotFlags {
-    NONE = 0x00,
-    GRID_MASK = 0x01,
-    GRAPH_MASK = 0x02,
-    STATS_MASK = 0x04,
-    ALL_MASK = 0x07
-};
+enum PlotFlags { NONE = 0x00, GRID_MASK = 0x01, GRAPH_MASK = 0x02, STATS_MASK = 0x04, ALL_MASK = 0x07 };
 typedef uint8_t PlotType; // Only need 3 bits to determine what to plot
 
 struct Args {
@@ -61,15 +55,21 @@ struct Position {
 
     bool operator>(const Position& other) const { return other < *this; }
 
-    std::string toString() const
+    Position operator*(const double scalar) const
     {
-        return "(" + std::to_string(row) + ", " + std::to_string(col) + ")";
+        return Position(static_cast<int>(row * scalar), static_cast<int>(col * scalar));
+    }
+    Position operator/(const double scalar) const
+    {
+        return Position(static_cast<int>(row / scalar), static_cast<int>(col / scalar));
     }
 
-    int distanceTo(const Position& other) const
-    {
-        return std::abs(row - other.row) + std::abs(col - other.col);
-    }
+    Position operator+(const Position& other) const { return Position(row + other.row, col + other.col); }
+    Position operator-(const Position& other) const { return Position(row - other.row, col - other.col); }
+
+    std::string toString() const { return "(" + std::to_string(row) + ", " + std::to_string(col) + ")"; }
+
+    int distanceTo(const Position& other) const { return std::abs(row - other.row) + std::abs(col - other.col); }
 };
 
 template <typename MessageType> struct ThreadControls {
@@ -126,6 +126,18 @@ std::filesystem::path getInputFileLocation(
 std::filesystem::path createOutputFilePath(
     const std::filesystem::path& inputFilePath, const std::string& outputFileName);
 
+};
+
+namespace std {
+template <> struct hash<util::Position> {
+
+    std::size_t operator()(const util::Position& pos) const
+    {
+        std::size_t h1 = std::hash<int>()(pos.row);
+        std::size_t h2 = std::hash<int>()(pos.col);
+        return h1 ^ (h2 << 1); // Combine the two hashes
+    };
+};
 };
 
 #endif // UTIL_HPP

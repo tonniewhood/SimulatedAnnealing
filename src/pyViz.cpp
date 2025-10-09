@@ -90,10 +90,9 @@ PyVisualizer::PyVisualizer(int rows, int cols, int numVertices, const std::vecto
     // CRITICAL: Release main thread's GIL so other threads can acquire it
     // Save the current thread state and release GIL
     this->mainThreadState = PyEval_SaveThread();
-    std::cout << "Main thread released GIL, saved thread state" << std::endl;
 
-    std::cout << "Python visualizer initialized (" << rows << "x" << cols << " grid) with "
-              << numVertices << " vertices" << std::endl;
+    std::cout << "Python visualizer initialized (" << rows << "x" << cols << " grid) with " << numVertices
+              << " vertices" << std::endl;
 
     initialized = true;
 }
@@ -142,8 +141,7 @@ bool PyVisualizer::initGrid(int rows, int cols, int numVertices)
 {
     PyGILState_STATE gstate = PyGILState_Ensure();
 
-    PyObject* pResult
-        = PyObject_CallMethod(pVizInstance, "init_grid", "iii", rows, cols, numVertices);
+    PyObject* pResult = PyObject_CallMethod(pVizInstance, "init_grid", "iii", rows, cols, numVertices);
     if (!pResult) {
         std::cerr << "Failed to call init_grid method" << std::endl;
         PyErr_Print();
@@ -372,8 +370,7 @@ void PyVisualizer::keepAlive(double pauseTime)
 
     PyGILState_STATE gstate = PyGILState_Ensure();
 
-    PyObject* pResult
-        = PyObject_CallMethod(pVizInstance, "keep_alive", "O", PyFloat_FromDouble(pauseTime));
+    PyObject* pResult = PyObject_CallMethod(pVizInstance, "keep_alive", "O", PyFloat_FromDouble(pauseTime));
     if (!pResult) {
         std::cerr << "Failed to call keep_alive method" << std::endl;
         PyErr_Print();
@@ -385,9 +382,8 @@ void PyVisualizer::keepAlive(double pauseTime)
     PyGILState_Release(gstate);
 }
 
-void PyVisualizer::saveFigures(const std::string& gridAnimationFilename,
-    const std::string& gridStaticFilename, const std::string& graphFilename,
-    const std::string& statsFilename)
+void PyVisualizer::saveFigures(const std::string& gridAnimationFilename, const std::string& gridStaticFilename,
+    const std::string& graphFilename, const std::string& statsFilename)
 {
     if (!initialized) {
         std::cerr << "Visualizer not initialized, cannot save figures" << std::endl;
@@ -396,9 +392,8 @@ void PyVisualizer::saveFigures(const std::string& gridAnimationFilename,
 
     PyGILState_STATE gstate = PyGILState_Ensure();
 
-    PyObject* pResult
-        = PyObject_CallMethod(pVizInstance, "save_figs", "ssss", gridAnimationFilename.c_str(),
-            gridStaticFilename.c_str(), graphFilename.c_str(), statsFilename.c_str());
+    PyObject* pResult = PyObject_CallMethod(pVizInstance, "save_figs", "ssss", gridAnimationFilename.c_str(),
+        gridStaticFilename.c_str(), graphFilename.c_str(), statsFilename.c_str());
     if (!pResult) {
         std::cerr << "Failed to call save_figs method" << std::endl;
         PyErr_Print();
@@ -430,9 +425,8 @@ PyObject* PyVisualizer::createOnCloseCallback()
         return nullptr;
     }
 
-    static PyMethodDef methodDef
-        = { "close_callback", reinterpret_cast<PyCFunction>(cStyleCallbackWrapper), METH_NOARGS,
-              "Notify C++ that the window was closed" };
+    static PyMethodDef methodDef = { "close_callback", reinterpret_cast<PyCFunction>(cStyleCallbackWrapper),
+        METH_NOARGS, "Notify C++ that the window was closed" };
 
     PyObject* func = PyCFunction_NewEx(&methodDef, capsule, nullptr);
     if (!func) {
@@ -491,23 +485,23 @@ void visualizationLoop(PyVisualizer& viz)
     while (!viz.threadControls->shouldStop.load()) {
 
         VizUpdate update;
+        bool hasUpdate = false;
 
         {
             std::unique_lock<std::mutex> lock(viz.threadControls->queueMutex);
 
             // Wait for updates or shutdown
-            viz.threadControls->queueCondition.wait_for(lock, tick, [&] {
-                return !viz.threadControls->messageQueue.empty()
-                    || viz.threadControls->shouldStop.load();
-            });
+            viz.threadControls->queueCondition.wait_for(lock, tick,
+                [&] { return !viz.threadControls->messageQueue.empty() || viz.threadControls->shouldStop.load(); });
 
             if (viz.threadControls->shouldStop.load() && viz.threadControls->messageQueue.empty())
                 break;
 
-            // Process all queued updates
+            // Pop the latest update if available
             if (!viz.threadControls->messageQueue.empty()) {
                 update = std::move(viz.threadControls->messageQueue.front());
                 viz.threadControls->messageQueue.pop();
+                hasUpdate = true;
             }
         }
 
@@ -515,7 +509,9 @@ void visualizationLoop(PyVisualizer& viz)
         viz.keepAlive(0.01);
 
         // Process updates outside the lock
-        viz.updateViz(update.positions, update.score);
+        if (hasUpdate) {
+            viz.updateViz(update.positions, update.score);
+        }
     }
 
     {

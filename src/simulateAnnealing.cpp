@@ -3,9 +3,11 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <queue>
 #include <random>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "Graph.hpp"
@@ -13,8 +15,6 @@
 #include "simulateAnnealing.hpp"
 #include "util.hpp"
 
-#define INITIAL_TEMPERATURE 10000000.0f
-#define COOLING_RATE 0.99999f
 #define THRESHOLD_TEMPERATURE 1.0f
 
 using steadyClock = std::chrono::steady_clock;
@@ -36,10 +36,15 @@ std::string mutationMethodToString(MutationMethod method)
         return std::string("NAIVE");
     case CONWAY:
         return std::string("CONWAY");
+    case SHIFT:
+        return std::string("SHIFT");
+    case CENTROID:
+        return std::string("CENTROID");
     case UNDEFINED:
         return std::string("UNDEFINED");
     }
 
+    // Should never get here, but I hate compiler warnings
     return std::string("UNKNOWN");
 }
 
@@ -51,10 +56,16 @@ std::string mutationMethodToString(MutationMethod method)
  */
 MutationMethod stringToMutationMethod(const std::string& methodStr)
 {
+    std::cout << "Using mutation method: " << methodStr << std::endl;
+
     if (util::toLower(methodStr) == "naive")
         return NAIVE;
     if (util::toLower(methodStr) == "conway")
         return CONWAY;
+    if (util::toLower(methodStr) == "shift")
+        return SHIFT;
+    if (util::toLower(methodStr) == "centroid")
+        return CENTROID;
     return UNDEFINED;
 }
 
@@ -64,13 +75,19 @@ MutationMethod stringToMutationMethod(const std::string& methodStr)
  * @param generator A random number generator.
  * @param srcDistribution A uniform integer distribution to select source vertex indices.
  * @param dstDistribution A uniform integer distribution to select destination vertex indices.
- * @return A pair of integers representing the indices of the swapped vertices.
+ * @return A SolutionAlterations object representing the vertices and their original positions that were swapped.
  */
-SolutionAlterations naiveNeighbor(Graph& graph, std::mt19937& generator,
-    std::uniform_int_distribution<int>& srcVertexDistribution,
-    std::uniform_int_distribution<int>& dstVertexDistribution,
-    std::uniform_real_distribution<double>& /*probabilityDistribution*/)
+SolutionAlterations naiveNeighbor(Graph& graph, std::mt19937& generator)
 {
+    static std::uniform_int_distribution<int> srcVertexDistribution(0, graph.getNumVertices() - 1);
+    if (srcVertexDistribution.max() != graph.getNumVertices() - 1) {
+        srcVertexDistribution.param(std::uniform_int_distribution<int>::param_type(0, graph.getNumVertices() - 1));
+    }
+    static std::uniform_int_distribution<int> dstVertexDistribution(0, graph.getNumVertices() - 2);
+    if (dstVertexDistribution.max() != graph.getNumVertices() - 2) {
+        dstVertexDistribution.param(std::uniform_int_distribution<int>::param_type(0, graph.getNumVertices() - 2));
+    }
+
     int srcVertex = srcVertexDistribution(generator);
     int dstVertex = dstVertexDistribution(generator);
 
@@ -81,8 +98,6 @@ SolutionAlterations naiveNeighbor(Graph& graph, std::mt19937& generator,
     std::vector<util::Position>& positions = graph.getVertexPositionsRef();
     util::Position srcPos = positions[srcVertex], dstPos = positions[dstVertex];
     std::swap(positions[srcVertex], positions[dstVertex]);
-
-    // TODO: Potentially adjust the scores in place rather than having to recompute over and over.
 
     return SolutionAlterations(srcVertex, dstVertex, srcPos, dstPos);
 }
@@ -96,8 +111,6 @@ void revertNaive(Graph& graph, const SolutionAlterations& alterations)
 {
     std::vector<util::Position>& positions = graph.getVertexPositionsRef();
     std::swap(positions[alterations.vertices.src], positions[alterations.vertices.dst]);
-
-    // TODO: You'd need to revert this here if we do in place score calculation
 }
 
 /**
@@ -108,19 +121,24 @@ void revertNaive(Graph& graph, const SolutionAlterations& alterations)
  * @param generator A random number generator.
  * @param srcDistribution A uniform integer distribution to select source vertex indices.
  * @param dstDistribution A uniform integer distribution to select destination vertex indices.
+ * @param probabilityDistribution A uniform real distribution to determine if we swap with a padded
+ * position or not.
+ * @return A SolutionAlterations object representing the vertices and their original positions that were swapped.
+ * is -1, it means we swapped with a padded position.
  */
-SolutionAlterations conwayNeighbor(Graph& graph, std::mt19937& generator,
-    std::uniform_int_distribution<int>& srcVertexDistribution,
-    std::uniform_int_distribution<int>& dstVertexDistribution,
-    std::uniform_real_distribution<double>& probabilityDistribution)
+SolutionAlterations conwayNeighbor(Graph& graph, std::mt19937& generator)
 {
-    // Resize the distributions if neccessary
+    static std::uniform_int_distribution<int> srcVertexDistribution(0, 0);
+    if (srcVertexDistribution.max() != graph.getNumVertices() - 1) {
+        srcVertexDistribution.param(std::uniform_int_distribution<int>::param_type(0, graph.getNumVertices() - 1));
+    }
+    static std::uniform_int_distribution<int> dstVertexDistribution(0, 0);
     if (dstVertexDistribution.max() != graph.getNumVertices() + graph.getNumPaddedPositions() - 2) {
         // Update the distributions to account for padded positions
         int totalPositions = graph.getNumVertices() + graph.getNumPaddedPositions();
-        dstVertexDistribution.param(
-            std::uniform_int_distribution<int>::param_type(0, totalPositions - 2));
+        dstVertexDistribution.param(std::uniform_int_distribution<int>::param_type(0, totalPositions - 2));
     }
+    static std::uniform_real_distribution<double> probabilityDistribution(0.0, 1.0);
 
     int srcVertex = srcVertexDistribution(generator);
     int dstVertex = dstVertexDistribution(generator);
@@ -136,8 +154,7 @@ SolutionAlterations conwayNeighbor(Graph& graph, std::mt19937& generator,
     util::Position dstPos;
     if (dstVertex >= graph.getNumVertices()) {
         double swapProb = probabilityDistribution(generator);
-        double ratio = static_cast<double>(graph.getNumVertices())
-            / static_cast<double>(graph.getNumPaddedPositions());
+        double ratio = static_cast<double>(graph.getNumVertices()) / static_cast<double>(graph.getNumPaddedPositions());
         double swapThreshold = 0.5 * ((ratio <= 0.25) ? 1.0 : (0.25 / ratio));
 
         // If we have a high enough probability, we swap with the padded position
@@ -180,6 +197,152 @@ void revertConway(Graph& graph, const SolutionAlterations& alterations)
 }
 
 /**
+ * @brief Alters the current solution by trying to place a vertex in a position to minimize the largest
+ * edge distance. If the space is filled, the vertex is shifted out and the process repeats.
+ * @param graph The graph whose vertex positions will be altered.
+ * @param generator A random number generator.
+ * @param srcDistribution A uniform integer distribution to select source vertex indices.
+ * @param probabilityDistribution A uniform real distribution to determine if we overwrite a filled
+ * position or not.
+ * @return A SolutionAlterations object representing the vertices and their original positions that were swapped. If the
+ * dst vertex is -1, it means we put into an empty space.
+ */
+SolutionAlterations shiftNeighbor(Graph& graph, std::mt19937& generator)
+{
+    static std::uniform_int_distribution<int> srcVertexDistribution(0, 0);
+    if (srcVertexDistribution.max() != graph.getNumVertices() - 1) {
+        srcVertexDistribution.param(std::uniform_int_distribution<int>::param_type(0, graph.getNumVertices() - 1));
+    }
+    static std::uniform_real_distribution<double> probabilityDistribution(0.0, 1.0);
+    static int maxSlides = static_cast<int>(std::max(graph.getGridWidth(), graph.getGridHeight()) / 2);
+
+    int srcVertex = srcVertexDistribution(generator);
+    std::vector<util::Position>& positions = graph.getVertexPositionsRef();
+    auto [furthestNeighbor, neighborPos] = graph.getFurthestNeighbor(srcVertex);
+
+    int lastValidVertex = srcVertex;
+    util::Position srcPos = positions[srcVertex];
+    util::Position lastValidPos = positions[srcVertex];
+    std::unordered_set<util::Position> visitedPositions = { srcPos };
+    for (int slides = 1; slides <= maxSlides; slides++) {
+        std::vector<util::Position> validAdjacent = graph.getValidAdjacentCells(neighborPos, visitedPositions);
+
+        // We shouldn't need to check against max slides
+        if (validAdjacent.empty() || slides > maxSlides) {
+            return SolutionAlterations(srcVertex, srcVertex, srcPos, srcPos);
+        }
+
+        std::uniform_int_distribution<int> adjDistribution(0, validAdjacent.size() - 1);
+        util::Position newPos = validAdjacent[adjDistribution(generator)];
+        if (!graph.isPositionOccupied(newPos)) {
+            graph.updateVertexPositions(srcVertex, -1, srcPos, newPos);
+            return SolutionAlterations(srcVertex, -1, srcPos, newPos);
+        }
+
+        // If the new position is occupied, we need to get a random probability to see if we
+        // overwrite it or not
+        neighborPos = newPos;
+        lastValidVertex = graph.getVertexAtPosition(newPos);
+        lastValidPos = newPos;
+        double overwriteThreshold = 0.5 + (0.5 * static_cast<double>(slides)) / static_cast<double>(maxSlides);
+        double overwriteProb = probabilityDistribution(generator);
+        if (overwriteProb < overwriteThreshold) {
+            graph.updateVertexPositions(srcVertex, lastValidVertex, srcPos, newPos);
+            return SolutionAlterations(srcVertex, lastValidVertex, srcPos, newPos);
+        }
+
+        // Insert the position we attempted to move to into the visited set so we don't
+        // immediately try to move back to it
+        visitedPositions.insert(newPos);
+    }
+
+    std::cerr << "Unexpected region reached in shiftNeighbor. Delaying for debugging." << std::endl;
+    std::this_thread::sleep_for(50ms);
+    // Realistically, we should never get here, but if we do, just return no change
+    return SolutionAlterations(srcVertex, srcVertex, srcPos, srcPos);
+}
+
+/**
+ * @brief Reverts the solution of a shift altered graph
+ * @param graph The graph whose vertex positions will be altered
+ * @param alterations The alterations made to get the previous solution
+ */
+void revertShift(Graph& graph, const SolutionAlterations& alterations)
+{
+    if (alterations.vertices.dst == -1) {
+        // If the dst vertex is -1, it means we put into an empty space
+        graph.updateVertexPositions(
+            alterations.vertices.src, -1, alterations.positions.dstPos, alterations.positions.srcPos);
+    } else {
+        graph.updateVertexPositions(alterations.vertices.src, alterations.vertices.dst, alterations.positions.dstPos,
+            alterations.positions.srcPos);
+    }
+}
+
+/**
+ * @brief Alters the current solution by taking a random vertex, and determines the "centroid" it's neighbors as a
+ * polygon. It then attempts to place the vertex in the centroid position, swapping with any vertices in that position
+ * (if any)
+ * @param graph The graph whose vertex positions will be altered.
+ * @param generator The random number generator to use for sampling.
+ * @return A SolutionAlterations object representing the vertices and their original positions that were swapped. If the
+ * dst vertex is -1, it means we put into an empty space.
+ */
+SolutionAlterations centroidNeighbor(Graph& graph, std::mt19937& generator)
+{
+    static std::uniform_int_distribution<int> srcVertexDistribution(0, 0);
+    if (srcVertexDistribution.max() != graph.getNumVertices() - 1) {
+        srcVertexDistribution.param(std::uniform_int_distribution<int>::param_type(0, graph.getNumVertices() - 1));
+    }
+    static std::uniform_int_distribution<int> push_direction(-1, 1);
+    static std::uniform_real_distribution<double> probabilityDistribution(0.0, 1.0);
+    int rowPushDir = push_direction(generator);
+    int colPushDir = push_direction(generator);
+
+    std::vector<util::Position>& positions = graph.getVertexPositionsRef();
+
+    int srcVertex = srcVertexDistribution(generator);
+    util::Position srcPos = positions[srcVertex];
+    auto [occupyingVertex, centroidPos] = graph.getCentroidPosition(srcVertex, rowPushDir, colPushDir);
+
+    if (!graph.isPositionOccupied(centroidPos)) {
+        graph.updateVertexPositions(srcVertex, -1, srcPos, centroidPos);
+        return SolutionAlterations(srcVertex, -1, srcPos, centroidPos);
+    }
+
+    double overwriteThreshold
+        = 0.6; // This is 100% a Magic Number and I'm not afraid to admit that. It came to me in a delusion
+    double overwriteProb = probabilityDistribution(generator);
+    if (overwriteProb < overwriteThreshold) {
+        graph.updateVertexPositions(srcVertex, graph.getVertexAtPosition(centroidPos), srcPos, centroidPos);
+        return SolutionAlterations(srcVertex, graph.getVertexAtPosition(centroidPos), srcPos, centroidPos);
+    }
+
+    // If we didn't overwrite, just return no change
+    return SolutionAlterations(srcVertex, srcVertex, srcPos, srcPos);
+}
+
+/**
+ * @brief Reverts the solution of a centroid altered graph
+ * @param graph The graph whose vertex positions will be altered
+ * @param alterations The alterations made to get the previous solution
+ */
+void revertCentroid(Graph& graph, const SolutionAlterations& alterations)
+{
+    if (alterations.vertices.dst == -1) {
+        // If the dst vertex is -1, it means we put into an empty space
+        graph.updateVertexPositions(
+            alterations.vertices.src, -1, alterations.positions.dstPos, alterations.positions.srcPos);
+    } else {
+        graph.updateVertexPositions(alterations.vertices.src, alterations.vertices.dst, alterations.positions.dstPos,
+            alterations.positions.srcPos);
+    }
+}
+
+static const MutationFunction mutationMethods[] = { naiveNeighbor, conwayNeighbor, shiftNeighbor, centroidNeighbor };
+static const RestoreFunction restoreMethods[] = { revertNaive, revertConway, revertShift, revertCentroid };
+
+/**
  * @brief Simulates the annealing process on the provided graph using specified flags. It will
  * attempt to place the graph's vertices on a grid in a way that minimizes the square of the
  * distances between connected vertices.
@@ -187,8 +350,8 @@ void revertConway(Graph& graph, const SolutionAlterations& alterations)
  * @param flags A vector of strings representing various flags that determine what additional
  * features to use.
  */
-void simulateAnnealing(
-    Graph& graph, MutationMethod method, bool sendUpdates, viz::ThreadControlPtr vizThreadControls)
+void simulateAnnealing(Graph& graph, double startingTemperature, double coolingRate, MutationMethod method,
+    bool sendUpdates, viz::ThreadControlPtr vizThreadControls)
 {
     /*
     Pseudocode for Simulated Annealing:
@@ -220,27 +383,15 @@ void simulateAnnealing(
     std::uniform_real_distribution<double> probabilityDistribution(0.0, 1.0);
     MutationFunction mutationMethod;
     RestoreFunction restoreMethod;
-    std::uniform_int_distribution<int> srcVertexDistribution(0, graph.getNumVertices() - 1);
-    std::uniform_int_distribution<int> dstVertexDistribution(0, graph.getNumVertices() - 2);
-    switch (method) {
-    case NAIVE:
-        mutationMethod = naiveNeighbor;
-        restoreMethod = revertNaive;
-        break;
-    case CONWAY:
-        mutationMethod = conwayNeighbor;
-        restoreMethod = revertConway;
-        break;
-    case UNDEFINED:
-        std::cerr << "Error: Unknown mutation method." << std::endl;
-        return;
+    if (method < NAIVE || method > CENTROID) {
+        std::cerr << "Invalid mutation method specified, defaulting to NAIVE." << std::endl;
+        method = NAIVE;
     }
 
     // ---- Used if we're plotting, but we still need he handles inside the loop ----
     auto next_frame = steadyClock::now() + frame_dt;
 
-    std::cout << "Starting Simulated Annealing with method: " << mutationMethodToString(method)
-              << std::endl;
+    std::cout << "Starting Simulated Annealing with method: " << mutationMethodToString(method) << std::endl;
 
     // Get an initial solution (it'll just be sequential placement on the grid for now)
     graph.initializeVertexPositions();
@@ -251,22 +402,22 @@ void simulateAnnealing(
     // losing a better position when the randomness of the algorithm kicks in
     std::vector<util::Position> lastBestPositions = graph.getCopyVertexPositions();
     int lastBestDistance = lastUsedDistance;
-    double temperature = INITIAL_TEMPERATURE;
+    double temperature = startingTemperature;
     int iteration = 0;
     while (temperature > THRESHOLD_TEMPERATURE) {
 
+#if HAVE_PYTHON
         if (vizThreadControls) {
             if (vizThreadControls->shouldStop.load()) {
-                std::cout << "Annealing process received stop signal, terminating early."
-                          << std::endl;
+                std::cout << "Annealing process received stop signal, terminating early." << std::endl;
                 vizThreadControls->stoppedEarly.store(true);
                 return;
             }
         }
+#endif // HAVE_PYTHON
 
         // Generate a new solution by randomly swapping two vertex positions
-        SolutionAlterations alterations = mutationMethod(graph, generator, srcVertexDistribution,
-            dstVertexDistribution, probabilityDistribution);
+        SolutionAlterations alterations = mutationMethods[method](graph, generator);
         int newDistance = graph.scoreGraphLayout(); // Consider caching and updating on swaps later
         // If our distance is smaller, we have a better solution, so keep it
         if (newDistance < lastUsedDistance) {
@@ -291,10 +442,11 @@ void simulateAnnealing(
             // avoid copying the entire position vector, I need to do this to ensure I don't use
             // a solution that I've already rejected
             else {
-                restoreMethod(graph, alterations);
+                restoreMethods[method](graph, alterations);
             }
         }
 
+#if HAVE_PYTHON
         if (sendUpdates && vizThreadControls && steadyClock::now() >= next_frame) {
             // If we have visualization controls, send an update
             viz::VizUpdate update;
@@ -309,8 +461,9 @@ void simulateAnnealing(
 
             next_frame += frame_dt;
         }
+#endif // HAVE_PYTHON
 
-        temperature *= COOLING_RATE; // Cool down the system
+        temperature *= coolingRate; // Cool down the system
         iteration++; // Just used to debug/report
     }
     // At the end, make sure we have the best positions found during the entire process
@@ -319,6 +472,7 @@ void simulateAnnealing(
     std::cout << "Completed Simulated Annealing" << std::endl;
     std::cout << "Run " << iteration << " iterations." << std::endl;
 
+#if HAVE_PYTHON
     // Send the final state, and then let the user close the viz windows
     if (sendUpdates) {
         viz::VizUpdate update;
@@ -333,5 +487,6 @@ void simulateAnnealing(
 
         std::cout << "Close the visualization windows to exit." << std::endl;
     }
+#endif // HAVE_PYTHON
 }
 }; // namespace sim
