@@ -112,18 +112,46 @@ util::PlotType util::stringToPlotType(const std::string& plotTypeStr)
 util::Args util::parseCommandLineArgs(int argc, char* argv[])
 {
     util::Args args;
+    std::unordered_set<std::string> validFlags
+        = { "--plot-type", "--mutation-method", "--run-analysis", "--save-figures", "--figure-path" };
 
     auto printUsageAndExit = [&]() {
-        std::cerr << "Usage: <input_file_path> <output_file_path> [--flag1 --flag2 ...]"
-                  << std::endl; // Update the flags as I get more stuff
+        std::cerr
+            << "Usage: <input_file_path> <output_file_path> [--flag1 --flag2 ...]\n"
+            << "Flags:\n"
+            << " --plot-type=<type>         Specify the type of plot to generate. Can combine plots with ','. "
+               "[all, graph, grid, stats]\n"
+            << " --mutation-method=<method> Specify the mutation method to use. [naive, conway, shift, centroid]\n"
+            << " --run-analysis=<enabled>   Run the analysis.\n"
+            << " --save-figures=<enabled>   Save figures to the specified path.\n"
+            << " --figure-path=<path>       Specify the path to save figures.\n"
+            << std::endl; // Update the flags as I get more stuff
         exit(EXIT_FAILURE);
     };
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
+
+        if (arg == "--help" || arg == "-h") {
+            printUsageAndExit();
+        }
+
         if (arg.rfind("--", 0) == 0) { // Argument starts with '--', it's a flag.
+
             if (i > 2) {
-                args.flagMap.insert(parseFlag(arg));
+                std::pair<std::string, std::string> flag = parseFlag(arg);
+
+                if (validFlags.find(flag.first) == validFlags.end()) {
+                    std::cerr << "Error: Unknown flag '" << flag.first << "' provided." << std::endl;
+                    printUsageAndExit();
+                }
+
+                if (flag.second.empty()) {
+                    std::cerr << "Error: Flag '" << flag.first << "' requires a value." << std::endl;
+                    printUsageAndExit();
+                }
+
+                args.flagMap.insert(flag);
             } else {
                 std::cerr << "Error: Flags must be provided after the first three positional arguments." << std::endl;
                 printUsageAndExit();
@@ -159,8 +187,6 @@ std::filesystem::path util::getInputFileLocation(
     const std::string& inputFileName, const std::string& projectRoot, const std::string& dataDir)
 {
     namespace fs = std::filesystem;
-
-    std::cout << "Received input file: " << inputFileName << std::endl;
 
     fs::path testRootPath = fs::path(projectRoot) / fs::path(inputFileName);
     fs::path testDataPath = fs::path(dataDir) / fs::path(inputFileName);

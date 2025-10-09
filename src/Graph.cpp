@@ -528,7 +528,7 @@ int Graph::scoreGraphLayout() const
  * information to include in the report.
  * @return bool indicating success or failure of the report operation.
  */
-bool Graph::reportResults(const std::unordered_map<std::string, std::string>& flags) const
+bool Graph::reportResults() const
 {
     std::ofstream outputFile(this->outputFilePath);
     if (!outputFile.is_open()) {
@@ -559,7 +559,6 @@ bool Graph::reportResults(const std::unordered_map<std::string, std::string>& fl
             outputFile << "Edge (" << vertex << " -> " << neighbor << ") with distance " << distance << std::endl;
         }
     }
-    std::cout << "Wrote Results to '" << this->outputFilePath << "'" << std::endl;
     outputFile.close();
     return true;
 }
@@ -735,4 +734,15 @@ std::pair<Graph::Edges, Graph::Edges> Graph::getGraphEdges()
     reverseEdges.resize(this->numVertices);
     inputFile.close();
     return std::make_pair(forwardEdges, reverseEdges);
+}
+
+/**
+ * @brief Resets the graph to its initial state, clearing all vertex positions and padded cells.
+ */
+void Graph::resetGraph()
+{
+    this->vertexPositions.clear();
+    this->occupiedCells.clear();
+    this->paddedCells.clear();
+    this->paddedPositions.clear();
 }

@@ -190,7 +190,7 @@ endif
 
 
 # --- Build Rules ---
-.PHONY: all run run-full clean help setup
+.PHONY: all run run-full run-analysis clean help setup
 
 all: $(TARGET)
 
@@ -234,18 +234,18 @@ MUTATION_METHOD ?= shift
 PLOT_TYPE       ?= 
 SAVE_FIGS       ?= false
 FIGURE_PATH     ?= $(PROJECT_ROOT)/
-STATISTICS      ?= false
+RUN_ANALYSIS    ?= false
 MUTATION_FLAG   ?= --mutation-method=$(MUTATION_METHOD)
 PLOT_FLAG       ?= --plot-type=$(PLOT_TYPE)
 SAVE_FLAG       ?= --save-figures=$(SAVE_FIGS)
 FIGURE_FLAG     ?= --figure-path=$(FIGURE_PATH)
-STATISTICS_FLAG ?= --statistics=$(STATISTICS)
+ANALYSIS_FLAG   ?= --run-analysis=$(RUN_ANALYSIS)
 FLAGS ?= \
 	$(if $(MUTATION_METHOD),$(MUTATION_FLAG),) \
 	$(if $(PLOT_TYPE),$(PLOT_FLAG),) \
-	$(if $(STATISTICS),$(STATISTICS_FLAG),) \
 	$(if $(SAVE_FIGS),$(SAVE_FLAG),) \
-	$(if $(FIGURE_PATH),$(FIGURE_FLAG),)
+	$(if $(FIGURE_PATH),$(FIGURE_FLAG),) \
+	$(if $(RUN_ANALYSIS),$(ANALYSIS_FLAG),)
 ARGS            ?= $(INPUT) $(OUTPUT) $(FLAGS)
 
 run: all
@@ -271,7 +271,15 @@ else
 endif
 
 run-analysis: all
-	@echo "\nNot implemented yet\n"
+ifeq ($(COMPILER),msvc)
+	@echo.
+	@echo Running annealing analysis with $(TARGET)...
+	@echo.
+	@$(TARGET) data/input.txt output.txt --run-analysis=true
+else
+	@echo "\nRunning annealing analysis with $(TARGET)...\n\n"
+	@$(TARGET) data/input.txt output.txt --run-analysis=true
+endif
 
 setup:
 	@echo "Running project setup..."

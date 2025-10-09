@@ -354,7 +354,7 @@ static const RestoreFunction restoreMethods[] = { revertNaive, revertConway, rev
  * @param flags A vector of strings representing various flags that determine what additional
  * features to use.
  */
-void simulateAnnealing(Graph& graph, double startingTemperature, double coolingRate, MutationMethod method,
+int simulateAnnealing(Graph& graph, double startingTemperature, double coolingRate, MutationMethod method,
     bool sendUpdates, viz::ThreadControlPtr vizThreadControls)
 {
     /*
@@ -381,9 +381,8 @@ void simulateAnnealing(Graph& graph, double startingTemperature, double coolingR
     End
     */
 
-    // std::random_device randomSeed;
-    // std::mt19937 generator(randomSeed());
-    std::mt19937 generator(0); // For reproducibility during testing
+    std::random_device randomSeed;
+    std::mt19937 generator(randomSeed());
     std::uniform_real_distribution<double> probabilityDistribution(0.0, 1.0);
     if (method < NAIVE || method > CENTROID) {
         std::cerr << "Invalid mutation method specified, defaulting to NAIVE." << std::endl;
@@ -430,7 +429,7 @@ void simulateAnnealing(Graph& graph, double startingTemperature, double coolingR
             if (vizThreadControls->shouldStop.load()) {
                 std::cout << "Annealing process received stop signal, terminating early." << std::endl;
                 vizThreadControls->stoppedEarly.store(true);
-                return;
+                return lastBestDistance;
             }
         }
 
@@ -578,6 +577,8 @@ void simulateAnnealing(Graph& graph, double startingTemperature, double coolingR
 
         std::cout << "Close the visualization windows to exit." << std::endl;
     }
+
+    return lastBestDistance;
 }
 
 #else
@@ -616,9 +617,8 @@ void simulateAnnealing(Graph& graph, double startingTemperature, double coolingR
     End
     */
 
-    // std::random_device randomSeed;
-    // std::mt19937 generator(randomSeed());
-    std::mt19937 generator(0); // For reproducibility during testing
+    std::random_device randomSeed;
+    std::mt19937 generator(randomSeed());
     std::uniform_real_distribution<double> probabilityDistribution(0.0, 1.0);
     MutationFunction mutationMethod;
     RestoreFunction restoreMethod;
@@ -680,8 +680,176 @@ void simulateAnnealing(Graph& graph, double startingTemperature, double coolingR
 
     std::cout << "Completed Simulated Annealing" << std::endl;
     std::cout << "Run " << iteration << " iterations." << std::endl;
+
+    return lastBestDistance;
 }
 
 #endif // HAVE_PYTHON
+
+/**
+ * @brief Runs an indepth analysis on the annealing process, specifcically how the cooling rate
+ * affects the final score and time to completion. This will run multiple trials at each
+ * cooling rate and record the results. The idea is to also run each of the methods and compare
+ * them.
+ * @param graph The graph to perform simulated annealing on.
+ * @param startingTemperature The starting temperature for the annealing process.
+ * @param coolingRates A vector of cooling rates to test.
+ * @param numTrials The number of trials to run for each cooling rate.
+ * @param outputFilePath The path to the output file where results will be saved.
+ * @return The integer exit code. 0 for success, non-zero for failure.
+ */
+int runAnnealingAnalysis(Graph& graph, double startingTemperature, const std::vector<double>& coolingRates,
+    int numTrials, const std::filesystem::path& outputFileDirectory)
+{
+    std::filesystem::path outputFilePathSummary = outputFileDirectory / std::filesystem::path("annealing_analysis.md");
+    std::vector<std::filesystem::path> outputFilePathsCSVs = {
+        outputFileDirectory / std::filesystem::path("annealing_analysis_naive.csv"),
+        outputFileDirectory / std::filesystem::path("annealing_analysis_conway.csv"),
+        outputFileDirectory / std::filesystem::path("annealing_analysis_shift.csv"),
+        outputFileDirectory / std::filesystem::path("annealing_analysis_centroid.csv"),
+    };
+
+    // Get the required data to store each method's results
+    std::vector<MutationMethod> methods = { NAIVE, CONWAY, SHIFT, CENTROID };
+    struct MethodStats {
+        std::vector<double> coolingRates;
+        std::vector<int> bestScores;
+        std::vector<int> worstScores;
+        std::vector<double> averageScores;
+        std::vector<double> fastestTime;
+        std::vector<double> slowestTime;
+        std::vector<double> averageTime;
+
+        MethodStats(size_t numRates, const std::vector<double>& coolingRates)
+            : coolingRates(coolingRates)
+            , bestScores(std::vector<int>(numRates, std::numeric_limits<int>::max()))
+            , worstScores(std::vector<int>(numRates, std::numeric_limits<int>::min()))
+            , averageScores(std::vector<double>(numRates, std::numeric_limits<double>::max()))
+            , fastestTime(std::vector<double>(numRates, 0.0))
+            , slowestTime(std::vector<double>(numRates, 0.0))
+            , averageTime(std::vector<double>(numRates, 0.0)) {};
+    };
+    std::vector<MethodStats> methodStats;
+    methodStats.reserve(methods.size());
+    for (size_t i = 0; i < methods.size(); i++) {
+        methodStats.emplace_back(coolingRates.size(), coolingRates);
+    }
+
+    for (const MutationMethod& method : methods) {
+        std::string methodStr = mutationMethodToString(method);
+        for (size_t rateIdx = 0; rateIdx < coolingRates.size(); rateIdx++) {
+            double coolingRate = coolingRates[rateIdx];
+            std::cout << "Running analysis for method " << methodStr << " with cooling rate " << coolingRate
+                      << std::endl;
+            std::cout << "=================================" << std::endl;
+
+            int bestScore = 0;
+            int worstScore = 0;
+            double totalScore = 0.0;
+            double fastest = 0.0;
+            double slowest = 0.0;
+            double totalTime = 0.0;
+            for (int trial = 1; trial < numTrials + 1; trial++) {
+                auto start = steadyClock::now();
+
+                // Suppress stdout during simulateAnnealing
+                std::streambuf* orig_buf = std::cout.rdbuf();
+                std::ostringstream null_stream;
+                std::cout.rdbuf(null_stream.rdbuf());
+
+                int score = simulateAnnealing(graph, startingTemperature, coolingRate, method);
+
+                // Restore stdout
+                std::cout.rdbuf(orig_buf);
+                auto end = steadyClock::now();
+
+                std::chrono::duration<double> elapsed = end - start;
+                totalScore += static_cast<double>(score);
+                totalTime += elapsed.count();
+                if (trial == 1 || score < bestScore) {
+                    bestScore = score;
+                }
+                if (trial == 1 || score > worstScore) {
+                    worstScore = score;
+                }
+                if (trial == 1 || elapsed.count() < fastest) {
+                    fastest = elapsed.count();
+                }
+                if (trial == 1 || elapsed.count() > slowest) {
+                    slowest = elapsed.count();
+                }
+            }
+
+            double averageScore = totalScore / static_cast<double>(numTrials);
+            double averageElapsed = totalTime / static_cast<double>(numTrials);
+
+            methodStats[method].bestScores[rateIdx] = bestScore;
+            methodStats[method].worstScores[rateIdx] = worstScore;
+            methodStats[method].averageScores[rateIdx] = averageScore;
+            methodStats[method].fastestTime[rateIdx] = fastest;
+            methodStats[method].slowestTime[rateIdx] = slowest;
+            methodStats[method].averageTime[rateIdx] = averageElapsed;
+        }
+
+        // Write out the CSV file for this method
+        std::ofstream csvFile(outputFilePathsCSVs[method]);
+        if (!csvFile.is_open()) {
+            std::cerr << "Failed to open output CSV file: " << outputFilePathsCSVs[method] << std::endl;
+            return 1;
+        }
+
+        csvFile
+            << "Cooling Rate,Best Score,Worst Score,Average Score,Fastest Time (s),Slowest Time (s),Average Time (s)\n";
+        for (size_t rateIdx = 0; rateIdx < coolingRates.size(); rateIdx++) {
+            csvFile << methodStats[method].coolingRates[rateIdx] << "," << methodStats[method].bestScores[rateIdx]
+                    << "," << methodStats[method].worstScores[rateIdx] << ","
+                    << methodStats[method].averageScores[rateIdx] << "," << methodStats[method].fastestTime[rateIdx]
+                    << "," << methodStats[method].slowestTime[rateIdx] << ","
+                    << methodStats[method].averageTime[rateIdx] << "\n";
+        }
+
+        csvFile.close();
+    }
+
+    // Write out the summary file
+    std::ofstream summaryFile(outputFilePathSummary);
+    if (!summaryFile.is_open()) {
+        std::cerr << "Failed to open output file: " << outputFilePathSummary << std::endl;
+        return 1;
+    }
+
+    std::stringstream summary;
+    summary << "# Results of Simulated Annealing Analysis\n\n> N = 10 trials per cooling rate\n\n";
+    for (size_t methodIdx = 0; methodIdx < methods.size(); methodIdx++) {
+        summary << "### Method: " << mutationMethodToString(methods[methodIdx]) << "\n";
+        summary << "|  Cooling Rate   |    Best Score    |    Worst Score   |  Average Score   | Fastest Time (s) | "
+                   "Slowest Time (s) | Average Time (s) |\n";
+        summary << "|-----------------|------------------|------------------|------------------|------------------|"
+                   "------------------|------------------|\n";
+        for (size_t rateIdx = 0; rateIdx < coolingRates.size(); rateIdx++) {
+            summary << std::left << "|" << std::setw(17) << methodStats[methodIdx].coolingRates[rateIdx] << "|"
+                    << std::setw(18) << methodStats[methodIdx].bestScores[rateIdx] << "|" << std::setw(18)
+                    << methodStats[methodIdx].worstScores[rateIdx] << "|" << std::setw(18)
+                    << methodStats[methodIdx].averageScores[rateIdx] << "|" << std::setw(18)
+                    << methodStats[methodIdx].fastestTime[rateIdx] << "|" << std::setw(18)
+                    << methodStats[methodIdx].slowestTime[rateIdx] << "|" << std::setw(18)
+                    << methodStats[methodIdx].averageTime[rateIdx] << "|\n";
+        }
+        summary << "\n";
+    }
+
+    summaryFile << summary.str();
+    summaryFile.close();
+
+    std::cout << "\nAnalysis complete." << std::endl;
+    std::cout << "Summary written to " << outputFilePathSummary << std::endl;
+    std::cout << "CSV files written to:" << std::endl;
+    for (const auto& path : outputFilePathsCSVs) {
+        std::cout << "  " << path << std::endl;
+    }
+    std::cout << "\n\n" << summary.str() << std::endl;
+
+    return 0;
+}
 
 }; // namespace sim
