@@ -58,22 +58,22 @@ class Viz:
         # close handling
         self.win.closeEvent = self._on_close_event
 
-    def init_grid(self, NROWS, NCOLS, num_nodes, title="Simulated Annealing Progress", use_color_map=True):
+    def init_grid(self, NROWS, NCOLS, num_nodes, title="Simulated Annealing Progress", use_color_map=True, size=(400, 400)):
         if not (self.plotting_flags & self.GRID_MASK):
             raise RuntimeError("GRID_MASK not set")
-        self.grid = AnimatedGrid(NROWS, NCOLS, title, use_color_map, num_nodes)
+        self.grid = AnimatedGrid(NROWS, NCOLS, title, use_color_map, num_nodes, size)
         self.hbox.addWidget(self.grid.widget)
 
-    def init_graph(self, edges):
+    def init_graph(self, edges, size=(400, 400)):
         if not (self.plotting_flags & self.GRAPH_MASK):
             raise RuntimeError("GRAPH_MASK not set")
-        self.graph = BasicDigraph(edges)
+        self.graph = BasicDigraph(edges, size)
         self.hbox.addWidget(self.graph.widget)
 
-    def init_stats(self):
+    def init_stats(self, size=(500, 400)):
         if not (self.plotting_flags & self.STATS_MASK):
             raise RuntimeError("STATS_MASK not set")
-        self.stats = StatsGraph(title="Simulated Annealing Stats")
+        self.stats = StatsGraph(title="Simulated Annealing Stats", size=size)
         self.hbox.addWidget(self.stats.widget)
 
     def show(self):
@@ -140,7 +140,7 @@ if __name__ == "__main__":
 
     # Initialize graph
     edges = [(0, 2), (1, 2), (2, 3), (3, 4), (3, 5)]
-    viz.init_graph(edges)
+    viz.init_graph(edges, )
 
     # Initialize stats
     viz.init_stats()

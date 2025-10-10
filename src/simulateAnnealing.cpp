@@ -344,7 +344,7 @@ static const RestoreFunction restoreMethods[] = { revertNaive, revertConway, rev
 
 #if HAVE_PYTHON
 
-#define WINDOW_LEN 200
+#define WINDOW_LEN 5000
 
 /**
  * @brief Simulates the annealing process on the provided graph using specified flags. It will
@@ -406,6 +406,8 @@ int simulateAnnealing(Graph& graph, double startingTemperature, double coolingRa
     // Unused if we're not sending updates
     auto start_time = steadyClock::now();
     auto next_frame = start_time + frame_dt;
+    double acceptedScoresSum = 0.;
+    int deltaE = 0;
     std::vector<std::chrono::duration<double, std::nano>> timestamps;
     std::vector<double> temperatures;
     std::vector<int> scores;
@@ -435,9 +437,10 @@ int simulateAnnealing(Graph& graph, double startingTemperature, double coolingRa
 
         // Generate a new solution by randomly swapping two vertex positions
         SolutionAlterations alterations = mutationMethods[method](graph, generator);
-        int newDistance = graph.scoreGraphLayout(); // Consider caching and updating on swaps later
+        int newDistance = graph.scoreGraphLayout();
+        deltaE = lastUsedDistance - newDistance;
         // If our distance is smaller, we have a better solution, so keep it
-        if (newDistance < lastUsedDistance) {
+        if (deltaE > 0) {
             lastUsedDistance = newDistance;
             // We only save the best positions if we've actually improved
             if (lastUsedDistance < lastBestDistance) {
@@ -446,23 +449,26 @@ int simulateAnnealing(Graph& graph, double startingTemperature, double coolingRa
             }
 
             if (sendUpdates) {
+                acceptedScoresSum += 1.;
                 acceptedScores.push_back(1.);
                 if (acceptedScores.size() > WINDOW_LEN) {
+                    acceptedScoresSum -= acceptedScores.front();
                     acceptedScores.pop_front();
                 }
             }
         } else {
             // If we didn't improve, we might still accept the new position with some
             // probability
-            int deltaE = std::abs(lastUsedDistance - newDistance);
-            double acceptanceProbability = std::exp(-static_cast<double>(deltaE) / temperature);
+            double acceptanceProbability = std::exp(-static_cast<double>(std::abs(deltaE)) / temperature);
             double randomProbability = probabilityDistribution(generator);
             // Here, we accept the new solution, but don't update the best known positions
             if (randomProbability <= acceptanceProbability) {
                 lastUsedDistance = newDistance;
                 if (sendUpdates) {
+                    acceptedScoresSum += 1.;
                     acceptedScores.push_back(1.);
                     if (acceptedScores.size() > WINDOW_LEN) {
+                        acceptedScoresSum -= acceptedScores.front();
                         acceptedScores.pop_front();
                     }
                 }
@@ -476,6 +482,7 @@ int simulateAnnealing(Graph& graph, double startingTemperature, double coolingRa
                 if (sendUpdates) {
                     acceptedScores.push_back(0.);
                     if (acceptedScores.size() > WINDOW_LEN) {
+                        acceptedScoresSum -= acceptedScores.front();
                         acceptedScores.pop_front();
                     }
                 }
@@ -495,15 +502,13 @@ int simulateAnnealing(Graph& graph, double startingTemperature, double coolingRa
             }
 
             auto current_time = steadyClock::now();
+            double acceptanceRate = acceptedScoresSum / static_cast<double>(acceptedScores.size());
+
             timestamps.push_back(std::chrono::duration<double, std::nano>(current_time - start_time));
             temperatures.push_back(temperature);
             scores.push_back(lastUsedDistance);
             bestScores.push_back(lastBestDistance);
-            scoreDeltas.push_back(lastUsedDistance - scores.back());
-
-            double acceptanceRate = std::accumulate(acceptedScores.begin(), acceptedScores.end(), 0.)
-                / static_cast<double>(acceptedScores.size());
-
+            scoreDeltas.push_back(deltaE);
             acceptanceRates.push_back(acceptanceRate);
 
             if (current_time >= next_frame) {
@@ -553,19 +558,12 @@ int simulateAnnealing(Graph& graph, double startingTemperature, double coolingRa
         viz::VizUpdate update;
 
         // Copy over the buffered data
-        std::copy(timestamps.begin(), timestamps.end(), std::back_inserter(update.timeStamps));
-        std::copy(temperatures.begin(), temperatures.end(), std::back_inserter(update.temperatures));
-        std::copy(scores.begin(), scores.end(), std::back_inserter(update.scores));
-        std::copy(bestScores.begin(), bestScores.end(), std::back_inserter(update.bestScores));
-        std::copy(scoreDeltas.begin(), scoreDeltas.end(), std::back_inserter(update.scoreDeltas));
-
-        // Clear the buffers for the next round
-        timestamps.clear();
-        temperatures.clear();
-        scores.clear();
-        bestScores.clear();
-        scoreDeltas.clear();
-
+        update.timeStamps = timestamps;
+        update.temperatures = temperatures;
+        update.scores = scores;
+        update.bestScores = bestScores;
+        update.scoreDeltas = scoreDeltas;
+        update.acceptanceRates = acceptanceRates;
         update.currentScore = lastUsedDistance;
         update.positions = graph.getCopyVertexPositions();
 
@@ -591,7 +589,7 @@ int simulateAnnealing(Graph& graph, double startingTemperature, double coolingRa
  * @param flags A vector of strings representing various flags that determine what additional
  * features to use.
  */
-void simulateAnnealing(Graph& graph, double startingTemperature, double coolingRate, MutationMethod method)
+int simulateAnnealing(Graph& graph, double startingTemperature, double coolingRate, MutationMethod method)
 {
     /*
     Pseudocode for Simulated Annealing:

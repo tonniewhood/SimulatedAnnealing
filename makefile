@@ -228,8 +228,8 @@ ifdef ARGS
 endif
 
 # --- Declare command line arguments ---
-INPUT           ?= input.txt
-OUTPUT          ?= output.txt
+INPUT           ?= data/demo.txt
+OUTPUT          ?= test_output.txt
 MUTATION_METHOD ?= shift
 PLOT_TYPE       ?= 
 SAVE_FIGS       ?= false
@@ -262,12 +262,12 @@ endif
 run-full: all
 ifeq ($(COMPILER),msvc)
 	@echo.
-	@echo Running $(TARGET) with arguments: data/input.txt output.txt --mutation-method=shift --plot-type=graph --save-figures=true --figure-path=figures/
+	@echo Running $(TARGET) with arguments: data/demo.txt output.txt --mutation-method=shift --plot-type=graph --save-figures=true --figure-path=figures/
 	@echo.
-	@$(TARGET) data/input.txt output.txt --mutation-method=shift --plot-type=all --save-figures=true --figure-path=figures/
+	@$(TARGET) data/demo.txt output.txt --mutation-method=shift --plot-type=all --save-figures=true --figure-path=figures/
 else
-	@echo "\nRunning $(TARGET) with arguments: data/input.txt output.txt --mutation-method=shift --plot-type=graph --save-figures=true --figure-path=figures/\n\n"
-	@$(TARGET) data/input.txt output.txt --mutation-method=shift --plot-type=all --save-figures=true --figure-path=figures/
+	@echo "\nRunning $(TARGET) with arguments: data/demo.txt output.txt --mutation-method=shift --plot-type=graph --save-figures=true --figure-path=figures/\n\n"
+	@$(TARGET) data/demo.txt output.txt --mutation-method=shift --plot-type=all --save-figures=true --figure-path=figures/
 endif
 
 run-analysis: all
@@ -275,10 +275,10 @@ ifeq ($(COMPILER),msvc)
 	@echo.
 	@echo Running annealing analysis with $(TARGET)...
 	@echo.
-	@$(TARGET) data/input.txt output.txt --run-analysis=true
+	@$(TARGET) data/demo.txt output.txt --run-analysis=true
 else
 	@echo "\nRunning annealing analysis with $(TARGET)...\n\n"
-	@$(TARGET) data/input.txt output.txt --run-analysis=true
+	@$(TARGET) data/demo.txt output.txt --run-analysis=true
 endif
 
 setup:
