@@ -319,6 +319,15 @@ std::pair<int, util::Position> Graph::getFurthestNeighbor(int vertex) const
     return { furthestNeighbor, furthestPos };
 }
 
+/**
+ * @brief Determines the centroid position of a vertex's neighbors.
+ * @param vertex The vertex for which to calculate the centroid.
+ * @param rowPushDir The row direction to push the centroid if occupied (-1 for up, 1 for down, 0 for no push).
+ * @param colPushDir The column direction to push the centroid if occupied (-1 for left, 1 for right, 0 for no
+ * push).
+ * @return A pair containing the vertex index at the centroid position (or -1 if unoccupied) and the centroid position.
+ * If the vertex has no neighbors, returns {-1, util::Position(-1, -1)}.
+ */
 std::pair<int, util::Position> Graph::getCentroidPosition(int vertex, int rowPushDir, int colPushDir) const
 {
     auto neighbors = this->getVertexNeighbors(vertex);

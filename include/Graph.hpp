@@ -103,8 +103,8 @@ public:
      * @param rowPushDir The row direction to push the centroid if occupied (-1 for up, 1 for down, 0 for no push).
      * @param colPushDir The column direction to push the centroid if occupied (-1 for left, 1 for right, 0 for no
      * push).
-     * @return The centroid position of the vertex's neighbors. If the vertex has no neighbors,
-     * returns an invalid position (-1, -1).
+     * @return A pair containing the vertex index at the centroid position (or -1 if unoccupied) and the centroid
+     * position. If the vertex has no neighbors, returns {-1, util::Position(-1, -1)}.
      */
     std::pair<int, util::Position> getCentroidPosition(int vertex, int rowPushDir, int colPushDir) const;
 

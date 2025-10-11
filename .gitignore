@@ -64,14 +64,12 @@ scratch/
 !data/*.txt
 !data/*.json
 
-# Images not in the figures directory
+# Images, in the figures directory or otherwise
 *.png
 *.jpg
 *.jpeg
 *.gif
 *.svg
-!figures/*.png
-!figures/*.jpg
-!figures/*.jpeg
-!figures/*.gif
-!figures/*.svg
+figures/
+!docs/*.png
+!docs/*.gif

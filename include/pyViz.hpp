@@ -42,13 +42,12 @@ class PyVisualizer {
 public:
     /**
      * @brief Initialize the Python visualization system
-     * @param gridRows Number of rows in the grid
-     * @param gridCols Number of columns in the grid
+     * @param rows Number of rows in the grid
+     * @param cols Number of columns in the grid
      * @param numVertices Number of vertices in the graph
      * @param offsets Adjacency list offsets for the graph
      * @param neighbors Adjacency list neighbors for the graph
-     * @param initialPositions Initial positions of the vertices
-     * @return true if initialization successful
+     * @param plotTypes Bitmask of plot types to enable (default: 3 for grid+graph)
      */
     PyVisualizer(int rows, int cols, int numVertices, const std::vector<int>& offsets,
         const std::vector<int>& neighbors, int plotTypes = 3);

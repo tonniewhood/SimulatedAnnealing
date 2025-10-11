@@ -1,10 +1,12 @@
-# stats_graph_pg.py
-import numpy as np
-from PyQt5 import QtWidgets
-import pyqtgraph as pg
-import pyqtgraph.exporters as pg_exp
+
 import sys
 import time
+
+import numpy as np
+import pyqtgraph as pg
+import pyqtgraph.exporters as pg_exp
+
+from PyQt5 import QtWidgets
 from PyQt5 import QtWidgets, QtCore
 
 WINDOW_WIDTH = 100000

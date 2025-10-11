@@ -1,10 +1,11 @@
-# viz_qt.py
-from dataclasses import dataclass
+
 import sys
+
 import numpy as np
+
+from dataclasses import dataclass
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import QThread, QTime, QEventLoop
-import pyqtgraph as pg
+from PyQt5.QtCore import QThread, QEventLoop
 
 from AnimatedGrid import AnimatedGrid   # new fast impl
 from StatsGraph import StatsGraph       # new fast impl

@@ -1,87 +1,298 @@
 # Simulated Annealing - Lab 04
 
-This project is a basic implementation of simulated annealing for placement of CLBs on an FPGA.
+A basic implementation of simulated annealing for FPGA CLB (Configurable Logic Block) placement optimization. Features multiple mutation strategies, real-time visualization, and performance analysis tools.
 
 ## Overview
 
-In this repo, there's a few things going on that may need explaining. The main body of the project is in C++, and there are no parts of the project that require Python. However, if you want to see a logical implementation of the graph, and the real-time placement of the pieces, then you'll need Python 3. This project utilizes Python 3.12, but that's not a requirement. Additionally, to keep the system clean, all python packages are kept inside of a virtual environment. The Python code is embedded in the C++ application, and runs asynchronously with the C++ side, but does require some thread handling to ensure that data is shared. I preferred this method over writing to a fifo and then picking that up in a Python script or even using a socket.
+This project implements simulated annealing to solve the FPGA placement problem - optimally positioning connected logic blocks on a 2D grid to minimize wire length. The system is built in C++17 for performance-critical algorithms, with optional Python integration for advanced visualization and analysis.
+
+**Key Architecture:**
+- **Core Engine**: C++17 implementation with multiple mutation algorithms
+- **Visualization**: Optional embedded Python with real-time updates  
+- **Analysis**: Comprehensive performance metrics and comparative studies
+- **Cross-Platform**: Supports Windows, Linux, and macOS
 
 ## Features
 
-- Simulated annealing algorithm
-- Embedded Python for visualization and analysis
-- OS agnostic build procedures.
+### Core Algorithm
+- **Multiple Mutation Methods**: Naive, Conway, Shift, and Centroid-based strategies
+- **Adaptive Cooling**: Configurable temperature schedules and cooling rates  
+- **Performance Optimized**: Compressed Sparse Row (CSR) graph representation
+- **Thread-Safe**: Asynchronous visualization with proper synchronization
+
+### Visualization System
+- **Real-Time Grid**: Live placement updates during annealing process
+- **Graph Visualization**: Network topology with directed edges and node positioning  
+- **Statistics Dashboard**: Temperature, score trends, and acceptance rates
+- **Export Capabilities**: High-resolution PNG and animated GIF output
+
+### Analysis & Benchmarking
+- **Multi-Method Comparison**: Side-by-side algorithm performance analysis
+- **Parameter Studies**: Cooling rate and temperature sensitivity analysis
+- **Statistical Reports**: Detailed CSV output and markdown summaries
+- **Convergence Metrics**: Track optimization progress and solution quality
 
 ## Requirements
 
-- C++ 17
-- C++ compiler (g++ used, but clang or LLVM should work fine)
-- Make
-- Python 3.x (optional)
+### Essential
+- **C++17** compatible compiler (GCC 7+, Clang 6+, MSVC 2019+)
+- **Make** build system
+- **Standard libraries**: `<filesystem>`, `<thread>`, `<chrono>`, etc.
 
-## Usage
+### Optional (for visualization)
+- **Python 3.8+** (tested with 3.12)
+- **Python packages**: PyQt5, pyqtgraph, numpy, imageio, scipy, networkx, matplotlib, pandas
 
-1. Either get the zip file, or clone the repository down
-2. Ensure flags in the `makefile` are reasonable for your system/any defaults you'd like to change.
-3. Build using make or your chosen compiler directly.
-4. Run the program either directly or using the `make run` target.
+### Platform-Specific
+- **Linux**: `build-essential` package
+- **Windows**: MinGW-w64 or Visual Studio 2019+
+- **macOS**: Xcode Command Line Tools
+
+## Quick Start
+
+```bash
+# 1. Clone or download the repository
+git clone <repository-url>
+cd Lab04
+
+# 2. Build the project
+make
+
+# 3. Run with default settings
+make run
+
+# 4. Run with custom input
+make run INPUT=demo.txt OUTPUT=results.txt
+
+# 5. Run with visualization (requires Python)
+./build/bin/Lab04 demo.txt output.txt --plot grid,graph,stats
+```
+
+## Project Structure
+
+```
+Lab04/
+├── src/                    # C++ source files
+│   ├── main.cpp           # Entry point and CLI handling
+│   ├── Graph.cpp          # Graph data structure and operations  
+│   ├── simulateAnnealing.cpp # Core annealing algorithms
+│   ├── util.cpp           # Utility functions
+│   └── pyViz.cpp          # Python integration (optional)
+├── include/               # Header files
+├── scripts/               # Python visualization modules
+│   ├── Viz.py            # Main visualization orchestrator
+│   ├── AnimatedGrid.py   # Real-time grid display
+│   ├── BasicDigraph.py   # Graph network visualization
+│   └── StatsGraph.py     # Performance metrics plots
+├── data/                  # Input files and results
+│   ├── demo.txt          # Example problem instance
+│   └── *.csv            # Analysis results
+├── build/                 # Compiled objects and executables
+└── makefile              # Build configuration
+```
 
 ### Building
 
-Building this project should ideally be relatively simple. There's not many external dependancies to manage, mainly just Python. When using make you have the following targets
+### Make Targets
 
-* all (run `make` with no arguments)
-* run
-* clean
-* help
+The makefile provides several convenient targets:
 
-Running make should work just fine. However, if there are issues, you can also run the compiler of your choice directly. For clang++ and g++, the command is identical. Simply navigate to the project root, and run the following:
+- **`make` or `make all`**: Build the executable and all object files
+- **`make run`**: Build and run with default arguments (`input.txt output.txt`)
+- **`make run-full`**: Build and run with all flags enabled except for running analysis
+- **`make run-analysis`**: Build and run the analsys of cooling rate versus duration and solution quality
+- **`make setup`**: Runs the setup script to ensure that the desired python packages are installed  
+- **`make clean`**: Remove all build artifacts
+- **`make help`**: Display available options and usage
 
-```bash
-[g++|clang++] -Iinclude src/Graph.cpp src/main.cpp src/py_viz.cpp [FLAGS] -o [EXE NAME]
-```
+### Manual Compilation
 
-There does exist potentials for errors, as the project does use the `filesystem` standard library code, which was introduced in C++17. If using linux, use your package manager to get the `build-essential` package. If using Windows, either use something from the [Min-GW project](https://www.mingw-w64.org/) or [Visual Studio](https://visualstudio.microsoft.com/downloads/) based on preference. Either method should provide a compiler that allows for running the specified compilation command.
-
-For this project, the following flags were used to build:
-
-* `-Wall`
-* `-Wextra`
-* `-g -O0` or `-O3` (dependant on debug or release)
-* `-std=c++17`
-
-Additionally, if using MSVC, the command needs to be adjusted. This should be the command:
+If you prefer to compile manually or the makefile doesn't work for your system, you can also the compiler of your choice directly. For clang++ and g++, the command is identical. Simply navigate to the project root, and run the following:
 
 ```bash
-cl /std:c++17 /W4 /EHsc /I include src\Graph.cpp src\main.cpp src\py_viz.cpp /Fe:myprog.exe
+# Basic compilation (no Python visualization)
+g++ -std=c++17 -Wall -Wextra -O3 -Iinclude \
+    src/Graph.cpp src/main.cpp src/simulateAnnealing.cpp src/util.cpp \
+    -o Lab04
+
+# With Python visualization support
+g++ -std=c++17 -Wall -Wextra -O3 -Iinclude -DHAVE_PYTHON \
+    src/Graph.cpp src/main.cpp src/simulateAnnealing.cpp src/util.cpp src/pyViz.cpp \
+    -lpython3.12 -o Lab04
 ```
 
-Note though, that I haven't been able to verify on a Windows computer that has MSVC installed, so I can't garauntee that will work.
+**Important Notes:**
+- The project uses C++17 `<filesystem>` library - ensure your compiler supports this
+- **Linux**: Install `build-essential` package for GCC/development tools
+- **Windows**: Use [MinGW-w64](https://www.mingw-w64.org/) or [Visual Studio](https://visualstudio.microsoft.com/downloads/)
+- **macOS**: Install Xcode Command Line Tools
 
-The preffered version of building though, is using the `makefile`. If using this, just navigate to the project root, and run it. The various targets are explained below
+**Recommended Compiler Flags:**
+- `-Wall -Wextra`: Enable comprehensive warnings
+- `-std=c++17`: C++17 standard compliance  
+- `-O3`: Optimization for release builds
+- `-g -O0`: Debug symbols for debugging builds
 
-**all**: builds the target executable and all object files associated with it
+**MSVC Compilation:**
 
-**run**: builds the executable, and then will run it. The target defaults to using two simple command line arguments, equivilent to running the following:
-  * `./target(.exe) input.txt output.txt`
+If you use MSVC as your chosen compiler, the flags will look a bit different. Run the following:
 
-The `run` target does support input arguments to specify what you'd like to run with. These include:
+```cmd
+cl /std:c++17 /W4 /EHsc /I include src\Graph.cpp src\main.cpp src\simulateAnnealing.cpp src\util.cpp /Fe:Lab04.exe
+```
 
-* `ARGS`: command line arguments directly
-* `INPUT`: specify the input file while leaving the output to the default
-* `OUTPUT`: specify the output file while leaving the input to the default
-* `FLAGS`: specify any flags used for analysis
+**Note**: Windows compilation with Python support requires additional Python development libraries and linking flags.
 
-Simply append `[ARGS|INPUT|OUTPUT|FLAGS]="arg1 arg2 ..."` to the end of `make run` to specify your desired make inputs
+**Preferred Method**: Use the provided makefile for automatic dependency management and platform detection.
 
-> NOTE: No flags are currently supported
+#### Make Run Options
 
-**clean**: cleans up the build directory
+Customize the `make run` target with these variables:
 
-**help**: displays the optionslike a standard `-h` or `--help` command argument
+- **`ARGS`**: Complete command line arguments  
+- **`INPUT`**: Input file (default: `input.txt`)
+- **`OUTPUT`**: Output file (default: `output.txt`)
+- **`MUTATION_METHOD`**: The desired method of mutating the solution [`naive`, `conway`, `shift`, or `centroid`]
+- **`PLOT_TYPE`**: The type of plots generated [`grid`, `graph`, or `stats`; `all` uses all types]
+- **`SAVE_FIGS`**: Whether or not to save he figures generated [`true` or `false`]
+- **`FIGURE_PATH`**: The path to save figures at (default: `./`)
+- **`RUN_ANALYSIS`**: Whether to run analysis on cooling rate versus time and solution quality [`true` or `false`]
 
-### Running
+**Examples:**
+```bash
+make run INPUT=demo.txt OUTPUT=results.txt
+make run ARGS="demo.txt output.txt --plot-type=grid --mutation-method=centroid"
+make run RUN_ANALYSIS=true
+```
 
-Running the file is simple, just use either the make command, or run the binary directly. Just ensure that the first two command line aruguments are the input file and the output file (in that order). No additional positional arguments are accepted. Invalid inputs will show a usage message.
+### Command Line Usage
 
-> TODO: Include the stuff about analysis here
+```bash
+./Lab04 <input_file> <output_file> [--plot-type=<types>] [--mutation-method=<algorithm>]
+       [--save-figures=<boolean>] [--figure-path=<path>] [--run-analsys=<boolean>]
+```
+
+**Arguments:**
+- `input_file`: Problem instance file (see Input Format below)
+- `output_file`: Results output location
+- `--plot-type=<types>`: Comma-separated visualization types: `grid`, `graph`, `stats`, `all`
+- `--method <algorithm>`: Algorithm choice: `naive`, `conway`, `shift`, `centroid`
+- `--save-figures=<boolean>`: Whether or not to save he figures generated:  `true` or `false`
+- `--figure-path=<path>`: The path to save figures at (defaults to current directory)
+- `--run-analsys=<boolean>`: Run comprehensive performance analysis: `true` or `false`
+
+**Examples:**
+```bash
+# Basic run with default settings
+./Lab04 data/demo.txt results.txt
+
+# With real-time visualization
+./Lab04 data/demo.txt results.txt --plot-type=all
+
+# Compare algorithms
+./Lab04 data/demo.txt results.txt --mutation-method=centroid
+
+# Performance analysis
+./Lab04 data/demo.txt results.txt --run-analysis
+```
+
+## Input File Format
+
+Input files specify the graph topology and grid constraints:
+
+```
+# Grid dimensions and graph size
+g <grid width> <grid height>
+v <number of vertices>
+
+# Graph edges (source -> destination)
+e <vertex1> <vertex2>
+e <vertex3> <vertex4>
+...
+```
+
+**Example (`data/demo.txt`):**
+```
+g 5 5
+v 1
+
+e 0 2
+e 1 2
+e 2 3
+e 3 4
+e 3 5
+```
+
+## Algorithm Details
+
+### Mutation Methods
+
+1. **Naive**: Random swapping of vertices or empty positions
+2. **Conway**: Game of Life inspired cellular automaton rules. Occupied pixels are surrounded by padded pixels, which form the set of feasible destination locations
+3. **Shift**: Systematic shifting of a random vertex to the place minimizing it's highest edge. Radiates out if the "idea" position is filled with some probability to replace.
+4. **Centroid**: Move vertices toward centroids of their neighbors
+
+## Analysis & Results
+
+The `--analysis` flag generates an analisys of different cooling rates against the solution speed and quality
+
+- **Multi-algorithm comparison** across different cooling rates
+- **CSV output** for further data analysis
+- **Markdown reports** with summary statistics
+
+Analysis results are saved to:
+- `data/annealing_analysis_<method>.csv` - Raw performance data
+- `docs/annealing_analysis.md` - Summary report
+
+Using the `view-analysis.py` script, you can view comparison of cooling rates on duration and solution quality. The plots currenly live under the `docs/` directory and look like the following
+
+![Shift Analysis](docs/shift_cooling_v_time_and_quality.png)
+
+## Visualization Features
+
+When built with Python support, the system provides:
+
+### Real-Time Grid View
+- Live vertex placement updates during annealing
+- Color-coded vertices with adaptive sizing
+- Checkerboard background for clear grid visualization
+- Score and temperature display
+
+### Graph Network View  
+- Automatic graph layout using NetworkX
+- Vertex labels and size correlation
+- Image export capabilities
+
+### Statistics Dashboard
+- Multi-tab performance metrics
+- Temperature cooling curves
+- Score evolution and best-score tracking
+- Acceptance rate trends
+- Capable of exporting to a PNG
+
+## Troubleshooting
+
+### Build Issues
+- **"filesystem not found"**: Ensure C++17 support (`-std=c++17`)
+- **Python linking errors**: Verify Python dev packages installed
+- **Make not found**: Install build tools for your platform
+
+### Runtime Issues  
+- **"Cannot find input file"**: Check file paths relative to project root
+- **Visualization crashes**: Ensure Python dependencies installed in venv
+- **Poor performance**: Try different mutation methods or adjust temperature
+
+### Platform-Specific Notes
+- **Linux**: May need `sudo apt install python3-dev` for Python integration
+- **Windows**: Use forward slashes in file paths or escape backslashes  
+- **macOS**: Ensure Xcode command line tools installed
+
+## Contributing
+
+![Huh?](docs/why.gif)
+
+Why would you want to contribute to this?
+
+## AI usage
+
+This project relied little on AI for the C++ portion regarding the logic following simulated annealing. I claim all work as my own for that portion, though there were conversations about optimizations and strucutre. The actual logic is mine though. The Python visualization was heavily reliant on AI. I'm not as familiar with the Python C API nor PyQtGraph. Because of this, I relied on them for syntax, available resources, and formatting.

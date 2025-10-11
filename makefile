@@ -190,7 +190,7 @@ endif
 
 
 # --- Build Rules ---
-.PHONY: all run run-full run-analysis clean help setup
+.PHONY: all release run run-full run-analysis clean help setup
 
 all: $(TARGET)
 

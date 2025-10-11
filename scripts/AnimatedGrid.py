@@ -1,13 +1,16 @@
-# animated_grid_pg.py
-import numpy as np
-import tempfile
-import os
-from PyQt5 import QtWidgets
-import pyqtgraph as pg
+
 import imageio
-from pyqtgraph.exporters import ImageExporter
+import os
 import sys
+import tempfile
 import time
+
+import numpy as np
+import pyqtgraph as pg
+import pyqtgraph.exporters as pg_exp
+
+from PyQt5 import QtWidgets
+
 
 class AnimatedGrid:
     def __init__(self, NROWS, NCOLS, title="Simulated Annealing Progress", use_color_map=False, num_nodes=1, size=(650, 600)):
@@ -168,9 +171,6 @@ class AnimatedGrid:
 
         self.label_positions = xy
 
-    def live_update_mode(self):
-        pass  # not needed with Qt; Viz.show/keep_alive drives the loop
-
     def close(self):
         self.widget.close()
 
@@ -180,7 +180,7 @@ class AnimatedGrid:
             return
 
         images = []
-        exporter = ImageExporter(self.plot)
+        exporter = pg_exp.ImageExporter(self.plot)
         exporter.parameters()['width'] = 400  # adjust as needed
 
         # Save each frame in the sequence

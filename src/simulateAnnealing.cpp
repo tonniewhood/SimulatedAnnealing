@@ -50,7 +50,7 @@ std::string mutationMethodToString(MutationMethod method)
 
 /**
  * @brief Converts a string into a MutationMethod enum. If the string is unknown, this returns
- * UNDEFIND
+ * UNDEFINED
  * @param methodStr the string corresponding to the Mutation Method
  * @return The enum element
  */

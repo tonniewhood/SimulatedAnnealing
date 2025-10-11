@@ -67,21 +67,8 @@ fi
 
 # Install required Python packages
 pip install --upgrade pip
-pip install matplotlib networkx numpy
+pip install matplotlib networkx numpy pyqt5 pyqtgraph scipy imageio pandas
 
-echo
-echo 
-echo "This project uses 'pygraphviz' for graph visualization."
-echo "To install 'pygraphviz', you will need to install Graphviz development libraries."
-echo "On Ubuntu/Debian, run: sudo apt-get install graphviz graphviz-dev"
-echo "On macOS, run: brew install graphviz"
-echo "On Windows, follow instructions at: https://pygraphviz.github.io/documentation/stable/install.html"
-echo "This setup script will attempt to install 'pygraphviz' now."
-echo
-
-pip install pygraphviz || echo "Warning: 'pygraphviz' installation failed. Please ensure Graphviz is installed and try again, or install with 'pip install pygraphviz'"
-
-echo
 echo
 echo "Setup complete. To activate the virtual environment in the future, run:"
 echo "source $VENV_PATH/bin/activate"

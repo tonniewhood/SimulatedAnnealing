@@ -112,35 +112,14 @@ if %errorlevel% neq 0 (
     echo Warning: Failed to upgrade pip
 )
 
-echo Installing required packages: matplotlib networkx numpy...
-%PIP_CMD% install matplotlib networkx numpy
+echo Installing required packages...
+%PIP_CMD% install matplotlib networkx numpy pyqt5 pyqtgraph scipy imageio pandas
 if %errorlevel% neq 0 (
-    echo Error: Failed to install required packages
+    echo Error: Failed to install core packages
     pause
     exit /b 1
 )
 
-echo.
-echo.
-echo This project uses 'pygraphviz' for graph visualization.
-echo To install 'pygraphviz' on Windows, you will need to:
-echo 1. Install Graphviz from: https://graphviz.org/download/
-echo 2. Add Graphviz to your system PATH
-echo 3. Install Visual Studio Build Tools or similar C++ compiler
-echo 4. Follow instructions at: https://pygraphviz.github.io/documentation/stable/install.html
-echo This setup script will attempt to install 'pygraphviz' now.
-echo.
-
-%PIP_CMD% install pygraphviz
-if %errorlevel% neq 0 (
-    echo Warning: 'pygraphviz' installation failed.
-    echo Please ensure Graphviz is installed and added to PATH, then try:
-    echo %PIP_CMD% install pygraphviz
-    echo.
-    echo Alternative: You can use the project without pygraphviz, but graph layouts may be limited.
-)
-
-echo.
 echo.
 echo Setup complete!
 echo.
@@ -154,11 +133,5 @@ if "%ACTIVATE_SCRIPT%" neq "" (
 )
 echo.
 echo If you encountered any issues, please refer to the README.md for troubleshooting tips.
-echo.
-echo You can now build the project using:
-echo   make
-echo.
-echo Or if using Visual Studio:
-echo   make USE_MSVC=1
 echo.
 pause
