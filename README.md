@@ -59,6 +59,28 @@ This project implements simulated annealing to solve the FPGA placement problem 
 
 I've noticed that cygwin has **severe** troubles installing the required packages for visualization. To get the required packages takes an imense ammount of space, and is very prone to failing. I'd reccomend using the command `make <target> USE_PYTHON=0` whenever you build, because it's a pain in the neck to get it to run otherwise. Similarly, running on Powershell or cmd.exe will produce troubles because of the PyQt5 dependency. I'd reccomend the same stragegy. Otherwise, it should work fine.
 
+If you do want to try and build on cygwin, I found that at LEAST the following installation packages are required to build, though I could never get a working version done.
+
+- curl
+- wget
+- gcc-core
+- g++-core
+- gcc-g++
+- libQt5Core-devel
+- libQt5Gui-devel
+- python3X-cython (X is just your version of Python, but it MUST match `python -V`)
+- python3X-devel
+- python3X-pip
+- python3X-setuptools
+- python3X-virtualenv
+- python3X-wheel
+- qt5-devel-tools
+- ninja
+- meson
+- make (a bit obvious there)
+
+I'm positive there are more gotchas, so I wouldn't recomend trying to build with visualization in Cygwin. However, the pure CLI is tested and stable in Cygwin.
+
 ## Quick Start
 
 ```bash
