@@ -36,6 +36,28 @@
 
 namespace viz {
 
+#if defined(_WIN32) || defined(__MINGW32__) || defined(__MINGW64__) || defined(__CYGWIN__)
+static void init_python_with_venv() {
+
+    const wchar_t* VENV    = L"" VENV_DIR;     
+    const wchar_t* SCRIPTS = L"" SCRIPTS_DIR;
+    std::wstring venv(VENV);
+    std::wstring sp = venv + L"/Lib/site-packages";
+    PyObject *sys, *path, *p_scripts, *p_venv;
+
+    sys = PyImport_ImportModule("sys");
+    if (!sys) { PyErr_Print(); return; }
+    path = PyObject_GetAttrString(sys, "path");
+    Py_DECREF(sys);
+    if (!path) { PyErr_Print(); return; }
+    p_scripts = PyUnicode_FromWideChar(SCRIPTS, -1);
+    if (p_scripts) { PyList_Insert(path, 0, p_scripts); Py_DECREF(p_scripts); }
+    p_venv = PyUnicode_FromWideChar(sp.c_str(), -1);
+    if (p_venv) { PyList_Insert(path, 0, p_venv); Py_DECREF(p_venv); }
+    Py_DECREF(path);
+}
+#endif
+
 PyVisualizer::PyVisualizer(int rows, int cols, int numVertices, const std::vector<int>& offsets,
     const std::vector<int>& neighbors, int plotTypes)
     : threadControls(std::make_shared<util::ThreadControls<VizUpdate>>())
@@ -228,9 +250,10 @@ bool PyVisualizer::initializePython()
     // Acquire GIL for this thread
     PyGILState_STATE gstate = PyGILState_Ensure();
 
-    // Add current directory to Python path
-    PyRun_SimpleString("import sys");
-    PyRun_SimpleString("sys.path.append('./scripts')");
+    
+#if defined(_WIN32) || defined(__MINGW32__) || defined(__MINGW64__) || defined(__CYGWIN__)
+    init_python_with_venv();
+#endif
 
     // Import our module for visualization
     pVizModule = PyImport_ImportModule("Viz");
