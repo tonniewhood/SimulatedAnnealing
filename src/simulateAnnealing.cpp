@@ -1,4 +1,7 @@
 
+
+#include "pyViz.hpp"
+
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -11,7 +14,6 @@
 #include <vector>
 
 #include "Graph.hpp"
-#include "pyViz.hpp"
 #include "simulateAnnealing.hpp"
 #include "util.hpp"
 

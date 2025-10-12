@@ -7,26 +7,30 @@ A basic implementation of simulated annealing for FPGA CLB (Configurable Logic B
 This project implements simulated annealing to solve the FPGA placement problem - optimally positioning connected logic blocks on a 2D grid to minimize wire length. The system is built in C++17 for performance-critical algorithms, with optional Python integration for advanced visualization and analysis.
 
 **Key Architecture:**
+
 - **Core Engine**: C++17 implementation with multiple mutation algorithms
-- **Visualization**: Optional embedded Python with real-time updates  
+- **Visualization**: Optional embedded Python with real-time updates
 - **Analysis**: Comprehensive performance metrics and comparative studies
 - **Cross-Platform**: Supports Windows, Linux, and macOS
 
 ## Features
 
 ### Core Algorithm
+
 - **Multiple Mutation Methods**: Naive, Conway, Shift, and Centroid-based strategies
-- **Adaptive Cooling**: Configurable temperature schedules and cooling rates  
+- **Adaptive Cooling**: Configurable temperature schedules and cooling rates
 - **Performance Optimized**: Compressed Sparse Row (CSR) graph representation
 - **Thread-Safe**: Asynchronous visualization with proper synchronization
 
 ### Visualization System
+
 - **Real-Time Grid**: Live placement updates during annealing process
-- **Graph Visualization**: Network topology with directed edges and node positioning  
+- **Graph Visualization**: Network topology with directed edges and node positioning
 - **Statistics Dashboard**: Temperature, score trends, and acceptance rates
 - **Export Capabilities**: High-resolution PNG and animated GIF output
 
 ### Analysis & Benchmarking
+
 - **Multi-Method Comparison**: Side-by-side algorithm performance analysis
 - **Parameter Studies**: Cooling rate and temperature sensitivity analysis
 - **Statistical Reports**: Detailed CSV output and markdown summaries
@@ -35,18 +39,25 @@ This project implements simulated annealing to solve the FPGA placement problem 
 ## Requirements
 
 ### Essential
+
 - **C++17** compatible compiler (GCC 7+, Clang 6+, MSVC 2019+)
 - **Make** build system
 - **Standard libraries**: `<filesystem>`, `<thread>`, `<chrono>`, etc.
 
 ### Optional (for visualization)
+
 - **Python 3.8+** (tested with 3.12)
 - **Python packages**: PyQt5, pyqtgraph, numpy, imageio, scipy, networkx, matplotlib, pandas
 
 ### Platform-Specific
+
 - **Linux**: `build-essential` package
 - **Windows**: MinGW-w64 or Visual Studio 2019+
 - **macOS**: Xcode Command Line Tools
+
+## IMPORTANT !!
+
+I've noticed that cygwin has **severe** troubles installing the required packages for visualization. To get the required packages takes an imense ammount of space, and is very prone to failing. I'd reccomend using the command `make <target> USE_PYTHON=0` whenever you build, because it's a pain in the neck to get it to run otherwise. Similarly, running on Powershell or cmd.exe will produce troubles because of the PyQt5 dependency. I'd reccomend the same stragegy. Otherwise, it should work fine.
 
 ## Quick Start
 
@@ -74,7 +85,7 @@ make run INPUT=demo.txt OUTPUT=results.txt
 Lab04/
 ├── src/                    # C++ source files
 │   ├── main.cpp           # Entry point and CLI handling
-│   ├── Graph.cpp          # Graph data structure and operations  
+│   ├── Graph.cpp          # Graph data structure and operations
 │   ├── simulateAnnealing.cpp # Core annealing algorithms
 │   ├── util.cpp           # Utility functions
 │   └── pyViz.cpp          # Python integration (optional)
@@ -101,7 +112,7 @@ The makefile provides several convenient targets:
 - **`make run`**: Build and run with default arguments (`input.txt output.txt`)
 - **`make run-full`**: Build and run with all flags enabled except for running analysis
 - **`make run-analysis`**: Build and run the analsys of cooling rate versus duration and solution quality
-- **`make setup`**: Runs the setup script to ensure that the desired python packages are installed  
+- **`make setup`**: Runs the setup script to ensure that the desired python packages are installed
 - **`make clean`**: Remove all build artifacts
 - **`make help`**: Display available options and usage
 
@@ -122,14 +133,16 @@ g++ -std=c++17 -Wall -Wextra -O3 -Iinclude -DHAVE_PYTHON \
 ```
 
 **Important Notes:**
+
 - The project uses C++17 `<filesystem>` library - ensure your compiler supports this
 - **Linux**: Install `build-essential` package for GCC/development tools
 - **Windows**: Use [MinGW-w64](https://www.mingw-w64.org/) or [Visual Studio](https://visualstudio.microsoft.com/downloads/)
 - **macOS**: Install Xcode Command Line Tools
 
 **Recommended Compiler Flags:**
+
 - `-Wall -Wextra`: Enable comprehensive warnings
-- `-std=c++17`: C++17 standard compliance  
+- `-std=c++17`: C++17 standard compliance
 - `-O3`: Optimization for release builds
 - `-g -O0`: Debug symbols for debugging builds
 
@@ -149,7 +162,7 @@ cl /std:c++17 /W4 /EHsc /I include src\Graph.cpp src\main.cpp src\simulateAnneal
 
 Customize the `make run` target with these variables:
 
-- **`ARGS`**: Complete command line arguments  
+- **`ARGS`**: Complete command line arguments
 - **`INPUT`**: Input file (default: `input.txt`)
 - **`OUTPUT`**: Output file (default: `output.txt`)
 - **`MUTATION_METHOD`**: The desired method of mutating the solution [`naive`, `conway`, `shift`, or `centroid`]
@@ -159,6 +172,7 @@ Customize the `make run` target with these variables:
 - **`RUN_ANALYSIS`**: Whether to run analysis on cooling rate versus time and solution quality [`true` or `false`]
 
 **Examples:**
+
 ```bash
 make run INPUT=demo.txt OUTPUT=results.txt
 make run ARGS="demo.txt output.txt --plot-type=grid --mutation-method=centroid"
@@ -173,15 +187,17 @@ make run RUN_ANALYSIS=true
 ```
 
 **Arguments:**
+
 - `input_file`: Problem instance file (see Input Format below)
 - `output_file`: Results output location
 - `--plot-type=<types>`: Comma-separated visualization types: `grid`, `graph`, `stats`, `all`
 - `--method <algorithm>`: Algorithm choice: `naive`, `conway`, `shift`, `centroid`
-- `--save-figures=<boolean>`: Whether or not to save he figures generated:  `true` or `false`
+- `--save-figures=<boolean>`: Whether or not to save he figures generated: `true` or `false`
 - `--figure-path=<path>`: The path to save figures at (defaults to current directory)
 - `--run-analsys=<boolean>`: Run comprehensive performance analysis: `true` or `false`
 
 **Examples:**
+
 ```bash
 # Basic run with default settings
 ./Lab04 data/demo.txt results.txt
@@ -212,6 +228,7 @@ e <vertex3> <vertex4>
 ```
 
 **Example (`data/demo.txt`):**
+
 ```
 g 5 5
 v 1
@@ -241,6 +258,7 @@ The `--analysis` flag generates an analisys of different cooling rates against t
 - **Markdown reports** with summary statistics
 
 Analysis results are saved to:
+
 - `data/annealing_analysis_<method>.csv` - Raw performance data
 - `docs/annealing_analysis.md` - Summary report
 
@@ -253,17 +271,20 @@ Using the `view-analysis.py` script, you can view comparison of cooling rates on
 When built with Python support, the system provides:
 
 ### Real-Time Grid View
+
 - Live vertex placement updates during annealing
 - Color-coded vertices with adaptive sizing
 - Checkerboard background for clear grid visualization
 - Score and temperature display
 
-### Graph Network View  
+### Graph Network View
+
 - Automatic graph layout using NetworkX
 - Vertex labels and size correlation
 - Image export capabilities
 
 ### Statistics Dashboard
+
 - Multi-tab performance metrics
 - Temperature cooling curves
 - Score evolution and best-score tracking
@@ -273,18 +294,21 @@ When built with Python support, the system provides:
 ## Troubleshooting
 
 ### Build Issues
+
 - **"filesystem not found"**: Ensure C++17 support (`-std=c++17`)
 - **Python linking errors**: Verify Python dev packages installed
 - **Make not found**: Install build tools for your platform
 
-### Runtime Issues  
+### Runtime Issues
+
 - **"Cannot find input file"**: Check file paths relative to project root
 - **Visualization crashes**: Ensure Python dependencies installed in venv
 - **Poor performance**: Try different mutation methods or adjust temperature
 
 ### Platform-Specific Notes
+
 - **Linux**: May need `sudo apt install python3-dev` for Python integration
-- **Windows**: Use forward slashes in file paths or escape backslashes  
+- **Windows**: Use forward slashes in file paths or escape backslashes
 - **macOS**: Ensure Xcode command line tools installed
 
 ## Contributing

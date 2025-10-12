@@ -10,9 +10,14 @@ BIN_DIR      := $(BUILD_DIR)/bin
 # --- Source Files ---
 SRCS_BASE     := $(filter-out $(SRC_DIR)/pyViz.cpp, $(wildcard $(SRC_DIR)/*.cpp))
 
+IS_DRIVE_PATH := $(and \
+  $(findstring :/,$(SHELL)), \
+  $(if $(filter /%,$(SHELL)),,1) \
+)
+
 # --- Compiler Detection and Configuration ---
 # Check for MSVC first (Windows environment)
-ifeq ($(OS),Windows_NT)
+ifeq ($(IS_DRIVE_PATH),1)
     # Check if we're in a Visual Studio environment
     ifdef VCINSTALLDIR
         COMPILER := msvc
@@ -80,7 +85,6 @@ else
     LINK_OUT     := -o
     COMPILE_FLAG := -c
 endif
-
 
 SHELLTYPE := posix
 ifeq ($(OS),Windows_NT)

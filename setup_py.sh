@@ -52,8 +52,14 @@ fi
 # Create virtual environment if needed
 if [[ "$make_venv" -eq 1 ]]; then
     echo "Creating Python virtual environment..."
-    $PYTHON_CMD -m venv "$VENV_PATH"
-    echo "Virtual environment created"
+    if $PYTHON_CMD -m venv "$VENV_PATH"; then
+    	echo "Virtual environment created"
+    elif $PYTHON_CMD -m virtualenv "$VENV_PATH"; then
+        echo "Virtual environment created"
+    else
+	echo "Could not create virtual environment"
+	exit 1
+    fi
 fi
 
 # Activate and install dependencies
@@ -65,9 +71,23 @@ elif [[ -f "$ALT_VENV_PATH/bin/activate" ]]; then
     source "$ALT_VENV_PATH/bin/activate"
 fi
 
+export PATH=/usr/bin:/bin:$PATH
+hash -r
+export CC=$(which gcc)
+export CXX=$(which g++)
+export CCACHE_DISABLE=1
+export CMAKE_GENERATOR=Ninja          # respected by scikit-build / many CMake-based pip builds
+export CMAKE_MAKE_PROGRAM=$(which ninja)
+export CMAKE_ARGS="-DCMAKE_C_COMPILER=$(which gcc) -DCMAKE_CXX_COMPILER=$(which g++) -G Ninja -DCMAKE_MAKE_PROGRAM=$(which ninja)"
+
+
+# expose BSD/POSIX bits and make sure u_int is visible even if headers include order varies
+export CFLAGS="-O2 -D__BSD_VISIBLE=1 -D_POSIX_C_SOURCE=200809L -include sys/types.h"
+export CXXFLAGS="-O2 -D__BSD_VISIBLE=1 -D_POSIX_C_SOURCE=200809L -include sys/types.h"
+
 # Install required Python packages
 pip install --upgrade pip
-pip install matplotlib networkx numpy pyqt5 pyqtgraph scipy imageio pandas
+pip install networkx numpy pyqt5 pyqtgraph scipy imageio pandas
 
 echo
 echo "Setup complete. To activate the virtual environment in the future, run:"
