@@ -105,7 +105,7 @@ else
         CXXFLAGS += $(RELFLAGS)
 endif
 
-USE_PYTHON ?= 1
+USE_PYTHON ?= 0
 ifeq ($(USE_PYTHON),1)
   # --- Determine Python availability ---
   ifeq ($(SHELLTYPE),winsh)
