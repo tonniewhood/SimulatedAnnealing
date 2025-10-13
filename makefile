@@ -176,9 +176,9 @@ ifeq ($(USE_PYTHON),1)
     $(info Or create manually with 'python -m venv venv' or 'python -m venv .venv')
   endif
 
-  ifeq ($(SHELLTYPE),winsh)
+#   ifeq ($(SHELLTYPE),winsh)
     CXXFLAGS += -DVENV_DIR=\"$(PROJECT_ROOT)/venv\" -DSCRIPTS_DIR=\"$(PROJECT_ROOT)/scripts\"
-  endif
+#   endif
 
   ifeq ($(HAVE_PYTHON),1)
     ifeq ($(COMPILER),msvc)
@@ -188,7 +188,10 @@ ifeq ($(USE_PYTHON),1)
     else
       CPPFLAGS += $(PYTHON_INCLUDES) -DHAVE_PYTHON=1
       LDFLAGS  += $(filter -L% -Wl%, $(PYTHON_LDFLAGS))
-      LDLIBS   += $(PYTHON_LDLIBS)
+      LDLIBS   += $(filter -l% -lpython%, $(PYTHON_LDFLAGS))
+      $(info $(PYTHON_LDFLAGS))
+      $(info $(PYTHON_LDLIBS))
+      
     endif
   endif
 
